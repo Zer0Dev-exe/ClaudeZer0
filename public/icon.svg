@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1f1e1b" />
+      <stop offset="100%" stop-color="#141311" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="120" fill="url(#bgGrad)" stroke="rgba(204, 120, 92, 0.4)" stroke-width="12" />
+  <path d="M256 70 L286 195 L415 170 L330 256 L415 342 L286 317 L256 442 L226 317 L97 342 L182 256 L97 170 L226 195 Z" fill="#cc785c" filter="url(#glow)" />
+</svg>

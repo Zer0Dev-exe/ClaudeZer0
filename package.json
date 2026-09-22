@@ -1,0 +1,35 @@
+{
+  "name": "claudezer0",
+  "version": "1.0.0",
+  "description": "Panel web y móvil directo para Claude Code",
+  "main": "server/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "auth:login": "claude auth login",
+    "auth:status": "claude auth status",
+    "auth:logout": "claude auth logout"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-code": "^2.1.278",
+    "cors": "^2.8.5",
+    "dotenv": "^18.0.1",
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@anthropic-ai/claude-code"
+    ]
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "agent",
+    "web-ui",
+    "mobile"
+  ],
+  "author": "",
+  "license": "MIT"
+}
