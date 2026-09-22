@@ -20,6 +20,10 @@
 
 **ClaudeZer0** transforma el CLI de **Claude Code** en una experiencia web y móvil ultra fluida, inspirada en el diseño visual de **Claude.ai**: paleta cálida oscura con toques terracota, tipografía editorial *Newsreader Serif*, streaming en tiempo real con razonamiento desplegable (*thinking process*), explorador interactivo de proyectos y ejecución multiplataforma.
 
+<p align="center">
+  <img src="https://media.discordapp.net/attachments/1405460793998315633/1551909335607676968/image.png?ex=6ab3afb2&is=6ab25e32&hm=976551f2bdd07215025e312f619647b294c0d012a7ebf9e003a38604e834c02c&=&format=webp&quality=lossless&width=1253&height=1280" alt="ClaudeZer0 Dashboard Preview" width="100%">
+</p>
+
 ---
 
 ## ✨ Características Principales
