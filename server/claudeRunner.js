@@ -36,6 +36,12 @@ export function mapModelToCli(model) {
   if (!model) return 'sonnet';
   const m = String(model).trim();
   const lower = m.toLowerCase();
+  const legacySonnetIds = new Set([
+    'claude-3-7-sonnet',
+    'claude-3-7-sonnet-latest',
+    'claude-3-7-sonnet-20250219'
+  ]);
+  if (legacySonnetIds.has(lower)) return 'sonnet';
   if (lower.startsWith('claude-')) return m;
   if (lower.includes('haiku')) return 'haiku';
   if (lower.includes('opus')) return 'opus';
@@ -171,7 +177,7 @@ export function executeTask({
   prompt,
   workspace,
   sessionId,
-  permissionMode = 'acceptEdits',
+  permissionMode = 'auto',
   model,
   apiKey,
   onEvent,

@@ -89,9 +89,9 @@ let currentSlashMatches = [];
 
 // Dynamic Models Catalog
 let availableModelsList = [
-  { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet', tag: 'Híbrido', desc: 'Pensamiento híbrido y alta precisión', default: true },
-  { id: 'claude-3-5-haiku', name: 'Claude 3.5 Haiku', tag: 'Ultrarrápido', desc: 'Velocidad y bajo coste' },
-  { id: 'claude-3-opus', name: 'Claude 3 Opus', tag: 'Profundo', desc: 'Capacidad profunda y contextual' }
+  { id: 'sonnet', name: 'Claude 3.7 Sonnet', tag: 'Híbrido', desc: 'Pensamiento híbrido y alta precisión', default: true },
+  { id: 'haiku', name: 'Claude 3.5 Haiku', tag: 'Ultrarrápido', desc: 'Velocidad y bajo coste' },
+  { id: 'opus', name: 'Claude 3 Opus', tag: 'Profundo', desc: 'Capacidad profunda y contextual' }
 ];
 let availableModelsMap = {};
 
@@ -138,7 +138,11 @@ const EXECUTION_MODES = {
   }
 };
 
-let selectedModel = localStorage.getItem('claudezer0_model') || 'claude-3-7-sonnet';
+let selectedModel = localStorage.getItem('claudezer0_model') || 'sonnet';
+if (selectedModel === 'claude-3-7-sonnet' || selectedModel === 'claude-3-7-sonnet-latest' || selectedModel === 'claude-3-7-sonnet-20250219') {
+  selectedModel = 'sonnet';
+  localStorage.setItem('claudezer0_model', selectedModel);
+}
 
 // DOM Elements: Workspace Modal
 const workspaceModal = document.getElementById('workspace-modal');
@@ -865,7 +869,7 @@ function handleSlashMode(arg) {
 
   // Interactive card
   const cardId = 'mode-card-' + Date.now();
-  const currentMode = permissionMode ? permissionMode.value : (localStorage.getItem('claudezer0_mode') || 'acceptEdits');
+  const currentMode = permissionMode ? permissionMode.value : (localStorage.getItem('claudezer0_mode') || 'auto');
   let buttonsHtml = '';
   const modeDescriptions = {
     'acceptEdits': 'Recomendado: Claude edita y crea archivos automáticamente.',
@@ -921,7 +925,7 @@ function handleSlashMode(arg) {
 
 function handleSlashStatus() {
   const currentInfo = getModelInfo(selectedModel);
-  const curMode = permissionMode ? permissionMode.value : (localStorage.getItem('claudezer0_mode') || 'acceptEdits');
+  const curMode = permissionMode ? permissionMode.value : (localStorage.getItem('claudezer0_mode') || 'auto');
   const modeInfo = EXECUTION_MODES[curMode] || { label: curMode };
 
   const keyStatusText = clientApiKey
@@ -1112,7 +1116,7 @@ function sendPrompt(customPrompt) {
       prompt,
       workspace: currentWorkspace,
       sessionId: activeSessionId,
-      permissionMode: permissionMode ? permissionMode.value : 'acceptEdits',
+      permissionMode: permissionMode ? permissionMode.value : 'auto',
       model: selectedModel,
       apiKey: clientApiKey || null
     }));
@@ -1766,7 +1770,7 @@ async function deleteCustomModel(id) {
     const data = await res.json();
     if (data.success) {
       if (selectedModel === id) {
-        selectedModel = 'claude-3-7-sonnet';
+        selectedModel = 'sonnet';
         localStorage.setItem('claudezer0_model', selectedModel);
       }
       await loadModels();
@@ -1918,13 +1922,17 @@ function setupEventListeners() {
 }
 
 function initModelAndMode() {
-  const rawModel = localStorage.getItem('claudezer0_model') || 'claude-3-7-sonnet';
+  const rawModel = localStorage.getItem('claudezer0_model') || 'sonnet';
   const modelInfo = getModelInfo(rawModel);
   setModel(modelInfo.id, modelInfo.name, modelInfo.tag);
   renderModelDropdown();
 
-  const savedMode = localStorage.getItem('claudezer0_mode') || 'acceptEdits';
-  const modeInfo = EXECUTION_MODES[savedMode] || EXECUTION_MODES['acceptEdits'];
+  let savedMode = localStorage.getItem('claudezer0_mode') || 'auto';
+  if (savedMode === 'acceptEdits') {
+    savedMode = 'auto';
+    localStorage.setItem('claudezer0_mode', savedMode);
+  }
+  const modeInfo = EXECUTION_MODES[savedMode] || EXECUTION_MODES['auto'];
   setPermissionMode(savedMode, modeInfo.icon, modeInfo.label);
 }
 
