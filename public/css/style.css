@@ -1562,6 +1562,132 @@ kbd {
   margin-top: 1px;
 }
 
+.item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.cost-chip {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 0 6px;
+  border-radius: 6px;
+  line-height: 1.55;
+  color: var(--muted);
+  background: var(--hover);
+}
+
+.item-price {
+  font-size: 0.74rem;
+  color: var(--subtle);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Coste de cada respuesta */
+.msg-cost {
+  margin-top: 8px;
+  font-family: var(--font-sans);
+  font-size: 0.76rem;
+  color: var(--subtle);
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+
+/* Panel de uso y gasto */
+.usage-dialog {
+  max-width: 600px;
+}
+
+.usage-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.usage-total {
+  font-family: var(--font-serif);
+  font-size: 2rem;
+  color: var(--text);
+}
+
+.usage-total-label {
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+
+.usage-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-table th,
+.usage-table td {
+  padding: 8px 12px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.usage-table th:first-child,
+.usage-table td:first-child {
+  text-align: left;
+}
+
+.usage-table th {
+  font-weight: 500;
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.usage-table tr + tr td {
+  border-top: 1px solid var(--border);
+}
+
+.usage-bar {
+  display: block;
+  height: 4px;
+  margin-top: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.7;
+}
+
+.usage-empty {
+  padding: 18px 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.usage-note {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.usage-note strong {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.usage-ref {
+  color: var(--subtle);
+}
+
 .item-check {
   width: 17px;
   height: 17px;
@@ -1745,7 +1871,9 @@ kbd {
   right: calc(100% + 10px);
   min-width: 210px;
   max-height: min(60vh, 440px);
+  overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-width: none;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -1760,13 +1888,19 @@ kbd {
   transition: opacity 0.12s ease, transform 0.12s ease;
 }
 
-.submenu-flyout::after {
+.submenu-flyout::-webkit-scrollbar {
+  display: none;
+}
+
+/* Puente invisible entre el menú y el submenú (en el propio submenú, fuera del área con scroll)
+   para que el ratón pueda cruzar el hueco sin que se cierre */
+.submenu.open::before {
   content: '';
   position: absolute;
-  top: 0;
-  bottom: 0;
-  right: -12px;
-  width: 12px;
+  top: -40px;
+  bottom: -40px;
+  right: 100%;
+  width: 14px;
 }
 
 .submenu.open > .submenu-flyout {
@@ -2601,7 +2735,7 @@ kbd {
     transform: none;
   }
 
-  .submenu-flyout::after {
+  .submenu.open::before {
     display: none;
   }
 

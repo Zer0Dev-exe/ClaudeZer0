@@ -149,6 +149,10 @@
             <span class="nav-icon"><svg><use href="#i-key"/></svg></span>
             <span>Clave y modo</span>
           </button>
+          <button type="button" class="nav-item" id="btn-nav-usage">
+            <span class="nav-icon"><svg><use href="#i-gauge"/></svg></span>
+            <span>Uso y gasto</span>
+          </button>
           <button type="button" class="nav-item" id="btn-nav-sync">
             <span class="nav-icon"><svg><use href="#i-refresh"/></svg></span>
             <span>Sincronizar modelos</span>
@@ -186,6 +190,9 @@
             </button>
             <button type="button" class="menu-row" id="btn-user-key">
               <svg><use href="#i-key"/></svg><span>Clave y modo</span>
+            </button>
+            <button type="button" class="menu-row" id="btn-user-usage">
+              <svg><use href="#i-gauge"/></svg><span>Uso y gasto</span>
             </button>
             <div class="menu-row menu-row-static">
               <span>Tema</span>
@@ -699,6 +706,27 @@
       <div class="modal-bottom">
         <button class="btn-text" id="btn-cancel-personalize">Cancelar</button>
         <button class="btn-primary-terracotta" id="btn-save-personalize">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL DE USO Y GASTO
+       ==================================================================== -->
+  <div class="modal-overlay" id="usage-modal" style="display: none;">
+    <div class="modal-dialog usage-dialog">
+      <div class="modal-top">
+        <h3>Uso y gasto</h3>
+        <button class="modal-close" id="btn-close-usage" aria-label="Cerrar">&times;</button>
+      </div>
+
+      <div class="modal-body" id="usage-body">
+        <div class="usage-empty">Cargando…</div>
+      </div>
+
+      <div class="modal-bottom">
+        <button class="btn-text" id="btn-reset-usage">Poner a cero</button>
+        <button class="btn-primary-terracotta" id="btn-done-usage">Cerrar</button>
       </div>
     </div>
   </div>

@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { getModelPricing } from './pricingManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,7 +36,7 @@ function getFamily(id) {
   return FAMILY_ORDER.find(f => lower.includes(f)) || null;
 }
 
-function buildModelEntry(id, name, createdAt = null) {
+function buildModelEntry(id, name, createdAt = null, remote = null) {
   const family = getFamily(id);
   const meta = FAMILIES[family] || { tag: 'Reciente', badge: 'Anthropic', desc: `Modelo ${name}`, icon: 'sonnet' };
   return {
@@ -47,8 +48,31 @@ function buildModelEntry(id, name, createdAt = null) {
     icon: meta.icon,
     source: 'anthropic',
     ...(createdAt ? { createdAt } : {}),
-    ...(family === DEFAULT_FAMILY ? { isDefault: true } : {})
+    ...(family === DEFAULT_FAMILY ? { isDefault: true } : {}),
+    ...(remote ? capabilitiesFromRemote(remote) : {})
   };
+}
+
+// Capacidades que publica la API para cada modelo (niveles de esfuerzo y ventana de contexto)
+function capabilitiesFromRemote(rm) {
+  const effort = rm.capabilities?.effort;
+  const effortLevels = effort?.supported
+    ? ['low', 'medium', 'high', 'xhigh', 'max'].filter(level => effort[level]?.supported)
+    : [];
+  return {
+    effortLevels,
+    ...(rm.max_input_tokens ? { contextWindow: rm.max_input_tokens } : {})
+  };
+}
+
+/**
+ * Añadir la tarifa oficial vigente a cada modelo (se busca por su nombre visible)
+ */
+export function withPricing(models) {
+  return models.map(m => {
+    const pricing = getModelPricing(m.name);
+    return pricing ? { ...m, pricing } : m;
+  });
 }
 
 // Modelos añadidos a mano por el usuario (los que no vienen de Anthropic ni del catálogo base)
@@ -236,7 +260,7 @@ function buildCatalogFromRemote(remoteModels) {
     list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   }
 
-  const toEntry = rm => buildModelEntry(rm.id, rm.display_name || rm.id, rm.created_at);
+  const toEntry = rm => buildModelEntry(rm.id, rm.display_name || rm.id, rm.created_at, rm);
   const latest = FAMILY_ORDER.filter(f => byFamily.get(f).length > 0).map(f => toEntry(byFamily.get(f)[0]));
   const legacy = FAMILY_ORDER.flatMap(f =>
     byFamily.get(f).slice(1).map(rm => {

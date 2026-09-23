@@ -30,9 +30,13 @@ import {
   addOrUpdateModel,
   deleteCustomModel,
   syncModelsFromAnthropic,
+  withPricing,
   getDefaultModelId,
   getHostOAuthToken
 } from './modelsManager.js';
+
+import { refreshPricing, getPricingInfo } from './pricingManager.js';
+import { summarizeResultCost, recordUsage, getUsage, resetUsage } from './usageManager.js';
 
 import {
   login,
@@ -115,7 +119,7 @@ app.get('/api/status', requireAuth, (req, res) => {
     auth,
     currentWorkspace: getCurrentWorkspace(),
     isTaskActive: isTaskActive(),
-    availableModels: getAvailableModels(),
+    availableModels: withPricing(getAvailableModels()),
     defaultModel: getDefaultModelId()
   });
 });
@@ -124,7 +128,7 @@ app.get('/api/status', requireAuth, (req, res) => {
 app.get('/api/models', requireAuth, (req, res) => {
   res.json({
     success: true,
-    models: getAvailableModels(),
+    models: withPricing(getAvailableModels()),
     defaultModel: getDefaultModelId()
   });
 });
@@ -133,7 +137,7 @@ app.post('/api/models', requireAuth, (req, res) => {
   try {
     const { id, name, tag, badge, desc, icon } = req.body;
     const model = addOrUpdateModel({ id, name, tag, badge, desc, icon });
-    res.json({ success: true, model, models: getAvailableModels() });
+    res.json({ success: true, model, models: withPricing(getAvailableModels()) });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -141,7 +145,7 @@ app.post('/api/models', requireAuth, (req, res) => {
 
 app.delete('/api/models/:id', requireAuth, (req, res) => {
   const ok = deleteCustomModel(req.params.id);
-  res.json({ success: ok, models: getAvailableModels() });
+  res.json({ success: ok, models: withPricing(getAvailableModels()) });
 });
 
 /**
@@ -159,7 +163,9 @@ function resolveModelsCredential(clientKey = null) {
 }
 
 async function runModelsSync(clientKey = null, reason = 'manual') {
+  await refreshPricing();
   const result = await syncModelsFromAnthropic(resolveModelsCredential(clientKey));
+  if (result.models) result.models = withPricing(result.models);
   if (result.success) {
     const changes = result.addedCount || result.removedCount
       ? ` (+${result.addedCount} / -${result.removedCount})`
@@ -178,6 +184,15 @@ app.post('/api/models/sync', requireAuth, async (req, res) => {
   const clientKey = req.headers['x-claude-api-key'] || req.body.apiKey || null;
   const result = await runModelsSync(clientKey, 'manual');
   res.json(result);
+});
+
+// Gasto acumulado por modelo
+app.get('/api/usage', requireAuth, (req, res) => {
+  res.json({ success: true, usage: getUsage(), pricing: getPricingInfo() });
+});
+
+app.post('/api/usage/reset', requireAuth, (req, res) => {
+  res.json({ success: true, usage: resetUsage() });
 });
 
 app.post('/api/auth/validate-key', requireAuth, (req, res) => {
@@ -376,6 +391,13 @@ wss.on('connection', (ws, req) => {
                   : JSON.stringify(result.result.result, null, 2);
               }
               assistantMsg.duration = result.result?.duration_ms || null;
+
+              // Coste de la respuesta según Claude Code (precio de tarifa de la API)
+              const cost = summarizeResultCost(result.result);
+              if (cost) {
+                assistantMsg.cost = cost;
+                recordUsage(cost);
+              }
 
               if (result.sessionId) {
                 setClaudeSessionId(currentSession.id, result.sessionId);

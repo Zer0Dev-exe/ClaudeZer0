@@ -675,6 +675,7 @@ function appendAssistantMsgStatic(msg) {
   `;
 
   messagesContainer.appendChild(row);
+  appendCostFooter(row, msg.cost);
 }
 
 function scrollToBottom() {
@@ -1170,7 +1171,7 @@ function sendPrompt(customPrompt) {
       permissionMode: permissionMode ? permissionMode.value : 'auto',
       model: selectedModel,
       apiKey: clientApiKey || null,
-      effort: modelSupportsEffort(selectedModel) && selectedEffort !== 'auto' ? selectedEffort : null,
+      effort: effectiveEffort(),
       outputStyle: selectedOutputStyle !== 'default' ? selectedOutputStyle : null,
       customInstructions: readPref('claudezer0_custom_instructions', '') || null,
       incognito: incognitoMode
@@ -1238,6 +1239,7 @@ function handleWsMessage(data) {
           currentTextElement.textContent = currentAccumulatedText;
         }
       }
+      if (currentAssistantElement && data.message) appendCostFooter(currentAssistantElement, data.message.cost);
       setRunning(false);
       currentAssistantElement = null;
       loadSessions();
@@ -1735,6 +1737,7 @@ function renderModelDropdown() {
 
   updateModelTrigger();
   refreshModelSelectionMarks();
+  if (shellReady) renderEffortOptions();
 }
 
 function buildModelOption(m, { compact = false } = {}) {
@@ -1750,10 +1753,25 @@ function buildModelOption(m, { compact = false } = {}) {
     ? `<button type="button" class="btn-del-model" data-id="${escapeHtml(m.id)}" title="Eliminar modelo" aria-label="Eliminar modelo"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>`
     : '';
 
+  const multiplier = costMultiplier(m);
+  const subscription = isSubscriptionBilling();
+  const priceLine = subscription
+    ? ''
+    : (m.pricing ? `${formatPrice(m.pricing.input)} entrada · ${formatPrice(m.pricing.output)} salida / MTok` : 'Precio no disponible');
+  const chipTitle = subscription
+    ? `Consumo relativo según la tarifa del modelo: cuanto más alto, antes gastas el límite de uso de ${planLabel()}`
+    : 'Gasto relativo al modelo más barato';
+  item.title = m.pricing && !subscription
+    ?`${m.name}\nEntrada: ${formatPrice(m.pricing.input)} / MTok\nSalida: ${formatPrice(m.pricing.output)} / MTok${m.pricing.cacheRead != null ? `\nCaché (lectura): ${formatPrice(m.pricing.cacheRead)} / MTok` : ''}`
+    : m.name;
+
   item.innerHTML = `
     <div class="item-content">
-      <div class="item-title">${escapeHtml(shortModelName(m.name))}</div>
-      ${compact ? '' : `<div class="item-desc">${escapeHtml(m.desc || m.id)}</div>`}
+      <div class="item-title-row">
+        <span class="item-title">${escapeHtml(shortModelName(m.name))}</span>
+        ${multiplier ? `<span class="cost-chip" title="${escapeHtml(chipTitle)}">${multiplier}</span>` : ''}
+      </div>
+      ${compact ? '' : `<div class="item-desc">${escapeHtml(m.desc || m.id)}</div>${priceLine ? `<div class="item-price">${escapeHtml(priceLine)}</div>` : ''}`}
     </div>
     ${deleteBtn}
     <svg class="item-check"><use href="#i-check"/></svg>
@@ -1777,16 +1795,87 @@ function shortModelName(name) {
   return String(name || '').replace(/^Claude\s+/i, '');
 }
 
-// Haiku no admite niveles de esfuerzo
+// Niveles de esfuerzo que admite un modelo, según las capacidades que publica la API
+function effortLevelsFor(modelId) {
+  const info = availableModelsList.find(m => m.id === modelId);
+  if (info && Array.isArray(info.effortLevels)) return info.effortLevels;
+  // Modelos añadidos a mano (sin datos de la API): Haiku no admite esfuerzo
+  return /haiku/i.test(String(modelId || '')) ? [] : ['low', 'medium', 'high', 'xhigh', 'max'];
+}
+
 function modelSupportsEffort(modelId) {
-  return !/haiku/i.test(String(modelId || ''));
+  return effortLevelsFor(modelId).length > 0;
+}
+
+// Esfuerzo que se enviará realmente con el modelo actual (null = el predeterminado del modelo)
+function effectiveEffort() {
+  if (selectedEffort === 'auto') return null;
+  return effortLevelsFor(selectedModel).includes(selectedEffort) ? selectedEffort : null;
+}
+
+// ¿Se está usando una suscripción (Pro/Max) en lugar de una clave de API?
+// Con suscripción no se cobra por tokens: los importes en dólares serían solo una referencia.
+function isSubscriptionBilling() {
+  if (clientApiKey) return false;
+  return !!(serverAuthInfo && serverAuthInfo.loggedIn && serverAuthInfo.authMethod === 'claude.ai');
+}
+
+function planLabel() {
+  const plan = serverAuthInfo && serverAuthInfo.subscriptionType;
+  return plan ? plan.charAt(0).toUpperCase() + plan.slice(1).toLowerCase() : 'tu plan';
+}
+
+// Multiplicador de gasto respecto al modelo más barato (por precio de salida)
+function costMultiplier(model) {
+  if (!model || !model.pricing) return null;
+  const outputs = availableModelsList.map(m => m.pricing && m.pricing.output).filter(v => v > 0);
+  if (outputs.length === 0) return null;
+  const ratio = model.pricing.output / Math.min(...outputs);
+  return Number.isInteger(ratio) ? `×${ratio}` : `×${ratio.toFixed(1).replace(/\.0$/, '')}`;
+}
+
+function formatPrice(value) {
+  return `$${Number.isInteger(value) ? value : value.toFixed(2).replace(/0$/, '')}`;
+}
+
+function formatUsd(value) {
+  if (!value) return '$0';
+  if (value < 0.01) return `$${value.toFixed(4)}`;
+  if (value < 1) return `$${value.toFixed(3)}`;
+  return `$${value.toFixed(2)}`;
+}
+
+function formatTokens(n) {
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}k`;
+  return String(n);
+}
+
+// Coste de una respuesta, debajo del mensaje
+function appendCostFooter(row, cost) {
+  if (!row || !cost || row.querySelector('.msg-cost')) return;
+  const entries = Object.entries(cost.byModel || {});
+  const tokens = entries.reduce((s, [, u]) => s + u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens, 0);
+  const detail = entries
+    .map(([id, u]) => `${shortModelName(getModelInfo(id).name || id)}: ${formatUsd(u.costUSD)} (${formatTokens(u.outputTokens)} de salida)`)
+    .join('\n');
+  const footer = document.createElement('div');
+  footer.className = 'msg-cost';
+  if (isSubscriptionBilling()) {
+    footer.title = `Usa tu suscripción ${planLabel()}: no se cobra por tokens.\n${detail}\n(Importe solo orientativo: lo que costaría en la API)`;
+    footer.textContent = `${formatTokens(tokens)} tokens`;
+  } else {
+    footer.title = `${detail}\nCalculado por Claude Code a precio de tarifa de la API`;
+    footer.textContent = `${formatUsd(cost.totalCostUSD)} · ${formatTokens(tokens)} tokens`;
+  }
+  row.appendChild(footer);
 }
 
 function updateModelTrigger() {
   const info = getModelInfo(selectedModel);
   if (currentModelName) currentModelName.textContent = shortModelName(info.name || selectedModel);
   if (currentModelTag) {
-    currentModelTag.textContent = modelSupportsEffort(selectedModel) ? effortLabel(selectedEffort) : '';
+    currentModelTag.textContent = modelSupportsEffort(selectedModel) ? effortLabel(effectiveEffort() || 'auto') : '';
   }
   const effortSubmenu = document.getElementById('effort-submenu');
   if (effortSubmenu) effortSubmenu.hidden = !modelSupportsEffort(selectedModel);
@@ -1807,6 +1896,7 @@ function setModel(modelId) {
   writePref('claudezer0_model', modelId);
   updateModelTrigger();
   refreshModelSelectionMarks();
+  renderEffortOptions();
 }
 
 function openCustomModelModal() {
@@ -2314,10 +2404,20 @@ function bindSubmenu(submenu) {
     submenu.parentElement.closest('.dropdown-menu')?.querySelectorAll('.submenu.open').forEach(s => s !== submenu && s.classList.remove('open'));
     setOpen(willOpen);
   });
-  // En escritorio se abren al pasar el ratón, como en claude.ai
+  // En escritorio se abren al pasar el ratón, como en claude.ai. Al salir se espera un momento
+  // antes de cerrar, para que dé tiempo a llevar el ratón hasta el submenú.
   const canHover = window.matchMedia('(hover: hover) and (min-width: 769px)');
-  submenu.addEventListener('mouseenter', () => { if (canHover.matches) setOpen(true); });
-  submenu.addEventListener('mouseleave', () => { if (canHover.matches) setOpen(false); });
+  let closeTimer = null;
+  submenu.addEventListener('mouseenter', () => {
+    if (!canHover.matches) return;
+    clearTimeout(closeTimer);
+    setOpen(true);
+  });
+  submenu.addEventListener('mouseleave', () => {
+    if (!canHover.matches) return;
+    clearTimeout(closeTimer);
+    closeTimer = setTimeout(() => setOpen(false), 300);
+  });
 }
 
 function bindDropdown(dropdownId, triggerId, onOpen) {
@@ -2364,9 +2464,12 @@ function renderEffortOptions() {
   const list = document.getElementById('effort-options');
   if (!list) return;
   list.innerHTML = '';
-  EFFORT_OPTIONS.forEach(opt => {
+  // Solo los niveles que admite el modelo elegido (Auto siempre está)
+  const supported = effortLevelsFor(selectedModel);
+  const current = effectiveEffort() || 'auto';
+  EFFORT_OPTIONS.filter(opt => opt.value === 'auto' || supported.includes(opt.value)).forEach(opt => {
     const item = document.createElement('div');
-    item.className = `dropdown-item${opt.value === selectedEffort ? ' selected' : ''}`;
+    item.className = `dropdown-item${opt.value === current ? ' selected' : ''}`;
     item.setAttribute('role', 'option');
     item.innerHTML = `
       <div class="item-content">
@@ -2385,8 +2488,8 @@ function renderEffortOptions() {
     });
     list.appendChild(item);
   });
-  const current = document.getElementById('effort-current-label');
-  if (current) current.textContent = effortLabel(selectedEffort);
+  const currentLabel = document.getElementById('effort-current-label');
+  if (currentLabel) currentLabel.textContent = effortLabel(current);
 }
 
 function setOutputStyle(value) {
@@ -2448,6 +2551,103 @@ async function switchWorkspaceQuiet(folder) {
     }
   } catch (err) {
     showToast('No se pudo cambiar de carpeta');
+  }
+}
+
+// --- Uso y gasto ---------------------------------------------------------------
+async function openUsageModal() {
+  closeAllDropdowns();
+  closeMobileSidebar();
+  const modal = document.getElementById('usage-modal');
+  const resetBtn = document.getElementById('btn-reset-usage');
+  if (resetBtn) {
+    resetBtn.textContent = 'Poner a cero';
+    delete resetBtn.dataset.confirm;
+  }
+  modal.style.display = 'flex';
+  try {
+    const res = await authFetch('/api/usage');
+    const data = await res.json();
+    renderUsage(data.usage, data.pricing);
+  } catch (err) {
+    document.getElementById('usage-body').innerHTML = '<div class="usage-empty">No se pudo cargar el uso</div>';
+  }
+}
+
+function closeUsageModal() {
+  const modal = document.getElementById('usage-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function renderUsage(usage, pricing) {
+  const body = document.getElementById('usage-body');
+  const rows = Object.entries(usage.models || {}).sort((a, b) => b[1].costUSD - a[1].costUSD);
+  const maxCost = rows.length ? rows[0][1].costUSD || 1 : 1;
+  const since = new Date(usage.since).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+  const pricingDate = pricing && pricing.fetchedAt
+    ? new Date(pricing.fetchedAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
+    : null;
+
+  const tableRows = rows.map(([id, u]) => {
+    const info = getModelInfo(id);
+    const tokens = u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens;
+    const multiplier = costMultiplier(info);
+    return `
+      <tr>
+        <td>
+          ${escapeHtml(shortModelName(info.name || id))}
+          ${multiplier ? `<span class="cost-chip">${multiplier}</span>` : ''}
+          <span class="usage-bar" style="width:${Math.max(4, Math.round((u.costUSD / maxCost) * 100))}%"></span>
+        </td>
+        <td>${u.responses}</td>
+        <td title="Entrada ${formatTokens(u.inputTokens)} · Salida ${formatTokens(u.outputTokens)} · Caché ${formatTokens(u.cacheReadTokens + u.cacheWriteTokens)}">${formatTokens(tokens)}</td>
+        <td class="${isSubscriptionBilling() ? 'usage-ref' : ''}">${formatUsd(u.costUSD)}</td>
+      </tr>`;
+  }).join('');
+
+  const subscription = isSubscriptionBilling();
+  const totalTokens = rows.reduce((s, [, u]) => s + u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens, 0);
+  const pricingNote = pricingDate ? ` Tarifas oficiales actualizadas el ${escapeHtml(pricingDate)}.` : '';
+  const note = subscription
+    ? `<strong>Estás usando tu suscripción ${escapeHtml(planLabel())}, no la API</strong>: no hay ninguna clave de API configurada,
+       así que no se te cobra por tokens. Cada mensaje gasta tu límite de uso del plan, igual que en claude.ai.
+       La columna «Equiv. API» es solo una referencia de lo que costaría en la API, y el multiplicador (×) indica
+       qué modelos gastan el límite más deprisa.${pricingNote}`
+    : `Estás usando una clave de API: estos importes se facturan a esa cuenta. Los calcula Claude Code a precio de tarifa.
+       El multiplicador (×) compara el precio de salida de cada modelo con el del más barato.${pricingNote}`;
+
+  body.innerHTML = `
+    <div class="usage-summary">
+      <span class="usage-total">${subscription ? `${formatTokens(totalTokens)} tokens` : formatUsd(usage.totalCostUSD)}</span>
+      <span class="usage-total-label">desde el ${escapeHtml(since)}</span>
+    </div>
+    <div class="usage-table-wrap">
+      ${rows.length ? `
+        <table class="usage-table">
+          <thead><tr><th>Modelo</th><th>Respuestas</th><th>Tokens</th><th>${subscription ? 'Equiv. API' : 'Coste'}</th></tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>` : '<div class="usage-empty">Todavía no hay respuestas registradas</div>'}
+    </div>
+    <p class="usage-note">${note}</p>
+  `;
+}
+
+async function handleResetUsage() {
+  const btn = document.getElementById('btn-reset-usage');
+  if (!btn.dataset.confirm) {
+    btn.dataset.confirm = '1';
+    btn.textContent = '¿Seguro? Pulsa otra vez';
+    return;
+  }
+  delete btn.dataset.confirm;
+  btn.textContent = 'Poner a cero';
+  try {
+    const res = await authFetch('/api/usage/reset', { method: 'POST' });
+    const data = await res.json();
+    renderUsage(data.usage, null);
+    showToast('Contador de gasto reiniciado');
+  } catch (err) {
+    showToast('No se pudo reiniciar el contador');
   }
 }
 
@@ -2546,6 +2746,11 @@ function setupShell() {
   bindDropdown('dropdown-user', 'btn-sidebar-user-pill');
   document.getElementById('btn-user-personalize')?.addEventListener('click', openPersonalizeModal);
   document.getElementById('btn-user-key')?.addEventListener('click', openKeyModal);
+  document.getElementById('btn-user-usage')?.addEventListener('click', openUsageModal);
+  document.getElementById('btn-nav-usage')?.addEventListener('click', openUsageModal);
+  document.getElementById('btn-close-usage')?.addEventListener('click', closeUsageModal);
+  document.getElementById('btn-done-usage')?.addEventListener('click', closeUsageModal);
+  document.getElementById('btn-reset-usage')?.addEventListener('click', handleResetUsage);
   document.querySelectorAll('[data-theme-choice]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -2571,7 +2776,10 @@ function setupShell() {
       e.preventDefault();
       focusSidebarSearch();
     }
-    if (e.key === 'Escape') closePersonalizeModal();
+    if (e.key === 'Escape') {
+      closePersonalizeModal();
+      closeUsageModal();
+    }
   });
 }
 
