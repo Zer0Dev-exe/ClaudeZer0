@@ -1,6 +1,7 @@
 import { spawn, execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -61,6 +62,56 @@ if (!fs.existsSync(clientConfigDir)) {
 
 let activeProcess = null;
 let activeTaskId = null;
+
+export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
+const OUTPUT_STYLES = ['Explanatory', 'Learning'];
+
+const tmpDir = path.join(projectRoot, 'data', '.tmp');
+if (!fs.existsSync(tmpDir)) {
+  try {
+    fs.mkdirSync(tmpDir, { recursive: true });
+  } catch (e) {
+    // ignore
+  }
+}
+
+/**
+ * Archivo de settings con el estilo de respuesta elegido (null = estilo por defecto)
+ */
+function getOutputStyleSettingsFile(outputStyle) {
+  if (!OUTPUT_STYLES.includes(outputStyle)) return null;
+  const file = path.join(tmpDir, `output-style-${outputStyle.toLowerCase()}.json`);
+  if (!fs.existsSync(file)) {
+    fs.writeFileSync(file, JSON.stringify({ outputStyle }), 'utf-8');
+  }
+  return file;
+}
+
+/**
+ * Borrar la transcripción que Claude Code guarda en disco para una sesión (usado por el modo incógnito)
+ */
+export function deleteClaudeTranscript(claudeSessionId) {
+  if (!/^[0-9a-f-]{36}$/i.test(String(claudeSessionId || ''))) return 0;
+  const configDirs = [
+    process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'),
+    clientConfigDir
+  ];
+  let removed = 0;
+  for (const dir of configDirs) {
+    const projectsDir = path.join(dir, 'projects');
+    if (!fs.existsSync(projectsDir)) continue;
+    for (const project of fs.readdirSync(projectsDir)) {
+      const base = path.join(projectsDir, project, claudeSessionId);
+      for (const target of [`${base}.jsonl`, base]) {
+        if (fs.existsSync(target)) {
+          fs.rmSync(target, { recursive: true, force: true });
+          removed++;
+        }
+      }
+    }
+  }
+  return removed;
+}
 
 /**
  * Obtener el modo configurado en .env (Hoster o Client)
@@ -170,6 +221,9 @@ export function getClaudeAuthStatus(clientApiKey = null) {
  * @param {string} [options.permissionMode] - 'acceptEdits' | 'auto' | 'bypassPermissions' | 'plan'
  * @param {string} [options.model] - Model name or alias
  * @param {string} [options.apiKey] - Claude API Key (requerida en Client mode, opcional en Hoster mode)
+ * @param {string} [options.effort] - Nivel de esfuerzo: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+ * @param {string} [options.outputStyle] - Estilo de respuesta: 'default' | 'Explanatory' | 'Learning'
+ * @param {string} [options.customInstructions] - Instrucciones personalizadas que se añaden al system prompt
  * @param {function} options.onEvent - Callback for streaming events
  * @param {function} options.onDone - Callback when completed
  * @param {function} options.onError - Callback on error
@@ -181,6 +235,9 @@ export function executeTask({
   permissionMode = 'auto',
   model,
   apiKey,
+  effort,
+  outputStyle,
+  customInstructions,
   onEvent,
   onDone,
   onError
@@ -234,6 +291,25 @@ export function executeTask({
   // Set model using valid Claude Code CLI alias
   const cliModel = mapModelToCli(model);
   args.push('--model', cliModel);
+
+  // Nivel de esfuerzo (solo valores admitidos por el CLI; sin flag = valor por defecto del modelo)
+  if (effort && EFFORT_LEVELS.includes(effort)) {
+    args.push('--effort', effort);
+  }
+
+  // Estilo de respuesta (se pasa como archivo de settings para evitar problemas de comillas en cmd.exe)
+  const stylePath = getOutputStyleSettingsFile(outputStyle);
+  if (stylePath) {
+    args.push('--settings', stylePath);
+  }
+
+  // Instrucciones personalizadas (archivo temporal, se borra al terminar la tarea)
+  let instructionsPath = null;
+  if (customInstructions && customInstructions.trim()) {
+    instructionsPath = path.join(tmpDir, `instructions-${taskId}.txt`);
+    fs.writeFileSync(instructionsPath, customInstructions.trim().slice(0, 4000), 'utf-8');
+    args.push('--append-system-prompt-file', instructionsPath);
+  }
 
   // Resume previous session if provided
   if (sessionId) {
@@ -380,6 +456,12 @@ export function executeTask({
       sessionId: capturedSessionId
     });
   });
+
+  const cleanupInstructions = () => {
+    if (instructionsPath) fs.rm(instructionsPath, { force: true }, () => {});
+  };
+  child.once('close', cleanupInstructions);
+  child.once('error', cleanupInstructions);
 
   child.on('close', (code) => {
     // Process any remaining text in buffer

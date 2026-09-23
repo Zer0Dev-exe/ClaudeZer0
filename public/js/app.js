@@ -19,6 +19,30 @@ let recognition = null;
 let isListening = false;
 let browsingDirectory = '';
 
+// Preferencias del usuario (solo en este navegador)
+function readPref(key, fallback = '') {
+  try {
+    return localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writePref(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // almacenamiento no disponible: la preferencia dura solo esta sesión
+  }
+}
+
+let selectedEffort = readPref('claudezer0_effort', 'auto');
+let selectedOutputStyle = readPref('claudezer0_output_style', 'default');
+let incognitoMode = false;
+let incognitoSessionId = null;
+let sessionFilter = '';
+let lastSessionsList = [];
+
 // DOM Elements: Auth
 const loginScreen = document.getElementById('login-screen');
 const mainApp = document.getElementById('main-app');
@@ -300,6 +324,7 @@ function initApp() {
   loadSessions();
   setupVoice();
   setupEventListeners();
+  setupShell();
 }
 
 function connectWebSocket() {
@@ -396,7 +421,7 @@ async function syncModelsSilently() {
 function updateModeUI() {
   if (appMode === 'Client') {
     if (userPlanLabel) {
-      userPlanLabel.textContent = clientApiKey ? 'Cliente (Key lista)' : 'Cliente (Sin Key)';
+      userPlanLabel.textContent = clientApiKey ? 'Clave propia' : 'Sin clave';
     }
     if (btnModeIndicator && modePillText && modePillDot) {
       if (clientApiKey) {
@@ -418,13 +443,13 @@ function updateModeUI() {
     // Hoster mode
     const isHostLoggedIn = serverAuthInfo && serverAuthInfo.loggedIn;
     const planName = serverAuthInfo && serverAuthInfo.subscriptionType
-      ? `Claude ${serverAuthInfo.subscriptionType.toUpperCase()}`
-      : (isHostLoggedIn ? 'Claude Conectado' : 'Sin cuenta');
+      ? serverAuthInfo.subscriptionType.charAt(0).toUpperCase() + serverAuthInfo.subscriptionType.slice(1).toLowerCase()
+      : (isHostLoggedIn ? 'Conectado' : 'Sin cuenta');
 
     if (userPlanLabel) {
       userPlanLabel.textContent = clientApiKey
-        ? 'Hoster (Key propia)'
-        : (isHostLoggedIn ? planName : 'Hoster (Sin cuenta)');
+        ? 'Clave propia'
+        : (isHostLoggedIn ? planName : 'Sin cuenta');
     }
 
     const userPill = document.getElementById('btn-sidebar-user-pill');
@@ -453,6 +478,7 @@ function updateModeUI() {
         : 'Modo Hoster: El anfitrión debe vincular su cuenta con "pnpm auth:login" o definir ANTHROPIC_API_KEY en .env.';
     }
   }
+  if (shellReady) updateUserIdentity();
 }
 
 function updateWorkspaceUI(wsPath) {
@@ -478,22 +504,27 @@ async function loadSessions() {
 }
 
 function renderSessionsList(sessions) {
+  lastSessionsList = sessions;
   sessionsList.innerHTML = '';
   if (sessions.length === 0) {
     sessionsList.innerHTML = '<div class="sessions-loading">Sin conversaciones previas</div>';
     return;
   }
 
-  sessions.forEach(sess => {
+  const query = sessionFilter.trim().toLowerCase();
+  const visible = query ? sessions.filter(s => (s.title || '').toLowerCase().includes(query)) : sessions;
+  if (visible.length === 0) {
+    sessionsList.innerHTML = '<div class="sessions-loading">Ninguna conversación coincide</div>';
+    return;
+  }
+
+  visible.forEach(sess => {
     const item = document.createElement('div');
     item.className = 'session-item' + (sess.id === activeSessionId ? ' active' : '');
     item.innerHTML = `
       <span class="session-title-text" title="${escapeHtml(sess.title)}">${escapeHtml(sess.title)}</span>
-      <button class="session-del-btn" title="Eliminar chat" data-id="${sess.id}">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="3 6 5 6 21 6"></polyline>
-          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
-        </svg>
+      <button class="session-del-btn" title="Eliminar chat" aria-label="Eliminar chat" data-id="${sess.id}">
+        <svg><use href="#i-trash"/></svg>
       </button>
     `;
 
@@ -512,9 +543,11 @@ function renderSessionsList(sessions) {
 
     sessionsList.appendChild(item);
   });
+  if (shellReady) updateTopTitle();
 }
 
 async function openSession(id) {
+  if (incognitoMode) setIncognito(false);
   try {
     const res = await authFetch(`/api/sessions/${id}`);
     const data = await res.json();
@@ -542,6 +575,7 @@ async function deleteSession(id) {
 }
 
 function newChat() {
+  discardIncognitoSession();
   activeSessionId = null;
   topChatTitle.textContent = 'Nueva conversación';
   messagesContainer.innerHTML = '';
@@ -592,11 +626,7 @@ function startStreamingAssistant() {
 
   row.innerHTML = `
     <div class="assistant-head">
-      <div class="claude-avatar-mini">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2L13.7 8.3L20 7L15.8 12L20 17L13.7 15.7L12 22L10.3 15.7L4 17L8.2 12L4 7L10.3 8.3L12 2Z"/>
-        </svg>
-      </div>
+      <div class="claude-avatar-mini"><svg><use href="#i-spark"/></svg></div>
       <span class="assistant-name">Claude</span>
     </div>
     <div class="msg-bubble">
@@ -635,11 +665,7 @@ function appendAssistantMsgStatic(msg) {
 
   row.innerHTML = `
     <div class="assistant-head">
-      <div class="claude-avatar-mini">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2L13.7 8.3L20 7L15.8 12L20 17L13.7 15.7L12 22L10.3 15.7L4 17L8.2 12L4 7L10.3 8.3L12 2Z"/>
-        </svg>
-      </div>
+      <div class="claude-avatar-mini"><svg><use href="#i-spark"/></svg></div>
       <span class="assistant-name">Claude</span>
     </div>
     <div class="msg-bubble">
@@ -664,11 +690,7 @@ function renderAssistantCard(htmlContent) {
   row.className = 'msg-row assistant';
   row.innerHTML = `
     <div class="assistant-head">
-      <div class="claude-avatar-mini">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2L13.7 8.3L20 7L15.8 12L20 17L13.7 15.7L12 22L10.3 15.7L4 17L8.2 12L4 7L10.3 8.3L12 2Z"/>
-        </svg>
-      </div>
+      <div class="claude-avatar-mini"><svg><use href="#i-spark"/></svg></div>
       <span class="assistant-name">Claude</span>
     </div>
     <div class="msg-bubble">
@@ -993,7 +1015,7 @@ function handleSlashHelp() {
   let commandsListHtml = '';
   SLASH_COMMANDS.forEach(c => {
     commandsListHtml += `
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06); gap:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; padding:8px 0; border-bottom:1px solid var(--border-subtle); gap:12px;">
         <div>
           <div style="display:flex; align-items:center; gap:6px;">
             <code style="color:var(--claude-terracotta); font-weight:600; font-size:0.86rem;">${escapeHtml(c.name)}</code>
@@ -1147,7 +1169,11 @@ function sendPrompt(customPrompt) {
       sessionId: activeSessionId,
       permissionMode: permissionMode ? permissionMode.value : 'auto',
       model: selectedModel,
-      apiKey: clientApiKey || null
+      apiKey: clientApiKey || null,
+      effort: modelSupportsEffort(selectedModel) && selectedEffort !== 'auto' ? selectedEffort : null,
+      outputStyle: selectedOutputStyle !== 'default' ? selectedOutputStyle : null,
+      customInstructions: readPref('claudezer0_custom_instructions', '') || null,
+      incognito: incognitoMode
     }));
   }
 }
@@ -1157,6 +1183,7 @@ function handleWsMessage(data) {
     case 'assistant_start':
       if (data.sessionId && !activeSessionId) {
         activeSessionId = data.sessionId;
+        if (incognitoMode) incognitoSessionId = data.sessionId;
       }
       break;
 
@@ -1259,6 +1286,7 @@ function handleWsMessage(data) {
 
 function setRunning(running) {
   isRunning = running;
+  mainApp.classList.toggle('is-running', running);
   if (running) {
     if (statusIndicator) statusIndicator.className = 'status-indicator busy';
     if (statusText) statusText.textContent = 'Claude trabajando';
@@ -1283,7 +1311,9 @@ function cancelActiveTask() {
 // Auto-grow textarea
 function adjustTextareaHeight() {
   promptInput.style.height = 'auto';
-  promptInput.style.height = Math.min(promptInput.scrollHeight, 160) + 'px';
+  promptInput.style.height = Math.min(promptInput.scrollHeight, 240) + 'px';
+  const inputCard = promptInput.closest('.input-card');
+  if (inputCard) inputCard.classList.toggle('has-text', promptInput.value.trim().length > 0);
 }
 
 // ==========================================================================
@@ -1677,61 +1707,106 @@ function renderModelDropdown() {
   if (!dynamicModelList) return;
   dynamicModelList.innerHTML = '';
 
-  availableModelsList.forEach(m => {
-    const isSelected = selectedModel === m.id || (m.id.includes('sonnet') && selectedModel === 'sonnet') || (m.id.includes('haiku') && selectedModel === 'haiku') || (m.id.includes('opus') && selectedModel === 'opus');
-    const item = document.createElement('div');
-    item.className = `dropdown-item model-option ${isSelected ? 'selected' : ''}`;
-    item.setAttribute('role', 'option');
-    item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
-    item.setAttribute('data-model', m.id);
-    item.setAttribute('data-name', m.name);
-    item.setAttribute('data-tag', m.tag || 'IA');
+  const mainModels = availableModelsList.filter(m => !m.legacy);
+  const legacyModels = availableModelsList.filter(m => m.legacy);
 
-    item.innerHTML = `
-      <div class="model-option-main">
-        <span class="model-option-name">${escapeHtml(m.name)}</span>
-        <span class="model-option-tag">${escapeHtml(m.tag || 'IA')}</span>
-      </div>
-      <div class="model-option-sub" style="display:flex; justify-content:space-between; align-items:center;">
-        <span>${escapeHtml(m.desc || m.id)}</span>
-        ${m.isCustom ? `<button type="button" class="btn-del-model" data-id="${escapeHtml(m.id)}" title="Eliminar modelo" style="background:none;border:none;color:var(--text-subtle);cursor:pointer;padding:2px 4px;margin-left:6px;"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>` : ''}
-      </div>
-    `;
+  mainModels.forEach(m => dynamicModelList.appendChild(buildModelOption(m)));
 
-    item.addEventListener('click', (e) => {
-      const delBtn = e.target.closest('.btn-del-model');
-      if (delBtn) {
-        e.stopPropagation();
-        deleteCustomModel(delBtn.getAttribute('data-id'));
-        return;
-      }
-      e.stopPropagation();
-      setModel(m.id, m.name, m.tag);
-      closeAllDropdowns();
-    });
+  // Submenú "Más modelos" con las generaciones anteriores
+  const moreSlot = document.getElementById('more-models-slot');
+  if (moreSlot) {
+    moreSlot.innerHTML = '';
+    if (legacyModels.length > 0) {
+      const more = document.createElement('div');
+      more.className = 'submenu more-models';
+      more.innerHTML = `
+        <button type="button" class="dropdown-item submenu-trigger" aria-haspopup="listbox" aria-expanded="false">
+          <span class="submenu-label">Más modelos</span>
+          <svg class="submenu-chevron"><use href="#i-chevron-right"/></svg>
+        </button>
+        <div class="submenu-flyout" role="listbox"></div>
+      `;
+      const flyout = more.querySelector('.submenu-flyout');
+      legacyModels.forEach(m => flyout.appendChild(buildModelOption(m, { compact: true })));
+      bindSubmenu(more);
+      moreSlot.appendChild(more);
+    }
+  }
 
-    dynamicModelList.appendChild(item);
-  });
-
-  const currentInfo = getModelInfo(selectedModel);
-  if (currentModelName) currentModelName.textContent = currentInfo.name;
-  if (currentModelTag) currentModelTag.textContent = currentInfo.tag || 'IA';
+  updateModelTrigger();
+  refreshModelSelectionMarks();
 }
 
-function setModel(modelId, modelName, modelTag) {
-  selectedModel = modelId;
-  localStorage.setItem('claudezer0_model', modelId);
-  const info = getModelInfo(modelId);
-  const displayName = modelName || info.name || modelId;
-  const displayTag = modelTag || info.tag || 'IA';
-  if (currentModelName) currentModelName.textContent = displayName;
-  if (currentModelTag) currentModelTag.textContent = displayTag;
+function buildModelOption(m, { compact = false } = {}) {
+  const isSelected = selectedModel === m.id;
+  const isUserModel = m.custom && m.source !== 'anthropic';
+  const item = document.createElement('div');
+  item.className = `dropdown-item model-option${compact ? ' model-option-compact' : ''}${isSelected ? ' selected' : ''}`;
+  item.setAttribute('role', 'option');
+  item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+  item.setAttribute('data-model', m.id);
 
+  const deleteBtn = isUserModel
+    ? `<button type="button" class="btn-del-model" data-id="${escapeHtml(m.id)}" title="Eliminar modelo" aria-label="Eliminar modelo"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>`
+    : '';
+
+  item.innerHTML = `
+    <div class="item-content">
+      <div class="item-title">${escapeHtml(shortModelName(m.name))}</div>
+      ${compact ? '' : `<div class="item-desc">${escapeHtml(m.desc || m.id)}</div>`}
+    </div>
+    ${deleteBtn}
+    <svg class="item-check"><use href="#i-check"/></svg>
+  `;
+
+  item.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const delBtn = e.target.closest('.btn-del-model');
+    if (delBtn) {
+      deleteCustomModel(delBtn.getAttribute('data-id'));
+      return;
+    }
+    setModel(m.id, m.name, m.tag);
+    closeAllDropdowns();
+  });
+
+  return item;
+}
+
+function shortModelName(name) {
+  return String(name || '').replace(/^Claude\s+/i, '');
+}
+
+// Haiku no admite niveles de esfuerzo
+function modelSupportsEffort(modelId) {
+  return !/haiku/i.test(String(modelId || ''));
+}
+
+function updateModelTrigger() {
+  const info = getModelInfo(selectedModel);
+  if (currentModelName) currentModelName.textContent = shortModelName(info.name || selectedModel);
+  if (currentModelTag) {
+    currentModelTag.textContent = modelSupportsEffort(selectedModel) ? effortLabel(selectedEffort) : '';
+  }
+  const effortSubmenu = document.getElementById('effort-submenu');
+  if (effortSubmenu) effortSubmenu.hidden = !modelSupportsEffort(selectedModel);
+}
+
+function refreshModelSelectionMarks() {
   document.querySelectorAll('.model-option').forEach(opt => {
-    const isMatch = opt.getAttribute('data-model') === modelId;
+    const isMatch = opt.getAttribute('data-model') === selectedModel;
     opt.classList.toggle('selected', isMatch);
     opt.setAttribute('aria-selected', isMatch ? 'true' : 'false');
   });
+  const more = document.querySelector('.more-models');
+  if (more) more.classList.toggle('has-selected', !!more.querySelector('.model-option.selected'));
+}
+
+function setModel(modelId) {
+  selectedModel = modelId;
+  writePref('claudezer0_model', modelId);
+  updateModelTrigger();
+  refreshModelSelectionMarks();
 }
 
 function openCustomModelModal() {
@@ -1916,13 +1991,15 @@ function setupEventListeners() {
   });
 
   // Mobile sidebar
-  btnHamburger.addEventListener('click', openMobileSidebar);
+  btnHamburger.addEventListener('click', () => {
+    if (mobileQuery.matches) openMobileSidebar();
+    else setSidebarCollapsed(false);
+  });
   sidebarBackdrop.addEventListener('click', closeMobileSidebar);
 
   // Workspace modal
   btnOpenWorkspace.addEventListener('click', openWorkspaceModal);
   btnChangeWs.addEventListener('click', openWorkspaceModal);
-  inputWsPill.addEventListener('click', openWorkspaceModal);
   btnCloseModal.addEventListener('click', closeWorkspaceModal);
   btnCancelWorkspace.addEventListener('click', closeWorkspaceModal);
   btnSelectWorkspace.addEventListener('click', saveSelectedWorkspace);
@@ -1936,7 +2013,6 @@ function setupEventListeners() {
   // Modo & Key modal listeners
   if (btnModeIndicator) btnModeIndicator.addEventListener('click', openKeyModal);
   if (btnSidebarKey) btnSidebarKey.addEventListener('click', openKeyModal);
-  if (btnSidebarUserPill) btnSidebarUserPill.addEventListener('click', openKeyModal);
   if (btnCloseKeyModal) btnCloseKeyModal.addEventListener('click', closeKeyModal);
   if (btnCancelKeyModal) btnCancelKeyModal.addEventListener('click', closeKeyModal);
   if (btnSaveKeyModal) btnSaveKeyModal.addEventListener('click', handleSaveKey);
@@ -1985,10 +2061,11 @@ function setPermissionMode(modeValue, modeIcon, modeLabel) {
 }
 
 function closeAllDropdowns() {
-  if (dropdownModel) dropdownModel.classList.remove('open');
-  if (dropdownMode) dropdownMode.classList.remove('open');
-  if (btnModelTrigger) btnModelTrigger.setAttribute('aria-expanded', 'false');
-  if (btnModeTrigger) btnModeTrigger.setAttribute('aria-expanded', 'false');
+  document.querySelectorAll('.custom-dropdown.open').forEach(dd => {
+    dd.classList.remove('open');
+    dd.querySelector('[aria-expanded]')?.setAttribute('aria-expanded', 'false');
+  });
+  document.querySelectorAll('.submenu.open').forEach(el => el.classList.remove('open'));
 }
 
 function setupDropdowns() {
@@ -2000,6 +2077,7 @@ function setupDropdowns() {
       if (willOpen) {
         dropdownModel.classList.add('open');
         btnModelTrigger.setAttribute('aria-expanded', 'true');
+        placeDropdownMenu(dropdownModel);
       }
     });
   }
@@ -2012,6 +2090,7 @@ function setupDropdowns() {
       if (willOpen) {
         dropdownMode.classList.add('open');
         btnModeTrigger.setAttribute('aria-expanded', 'true');
+        placeDropdownMenu(dropdownMode);
       }
     });
   }
@@ -2038,6 +2117,461 @@ function setupDropdowns() {
       closeAllDropdowns();
       hideSlashPopup();
     }
+  });
+}
+
+// ==========================================================================
+// 10. Interfaz: inicio/conversación, incógnito, personalización y menús
+// ==========================================================================
+const EFFORT_OPTIONS = [
+  { value: 'auto', label: 'Auto', desc: 'El modelo decide cuánto pensar' },
+  { value: 'low', label: 'Bajo', desc: 'Más rápido, para tareas sencillas' },
+  { value: 'medium', label: 'Medio', desc: 'Equilibrio entre rapidez y profundidad' },
+  { value: 'high', label: 'Alto', desc: 'Razona más a fondo' },
+  { value: 'xhigh', label: 'Muy alto', desc: 'Para problemas complejos' },
+  { value: 'max', label: 'Máximo', desc: 'Todo el razonamiento posible' }
+];
+
+const OUTPUT_STYLE_LABELS = {
+  default: 'Estilo',
+  Explanatory: 'Explicativo',
+  Learning: 'Aprendizaje'
+};
+
+const mobileQuery = window.matchMedia('(max-width: 768px)');
+const darkSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+let shellReady = false;
+
+function effortLabel(value) {
+  return (EFFORT_OPTIONS.find(o => o.value === value) || EFFORT_OPTIONS[0]).label;
+}
+
+function shortPathName(p) {
+  const parts = String(p || '').split(/[\\/]/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : String(p || '');
+}
+
+// --- Inicio vs. conversación ------------------------------------------------
+function syncEmptyState() {
+  const empty = emptyState.style.display !== 'none';
+  mainApp.classList.toggle('main-app-empty', empty);
+  mainApp.classList.toggle('is-chat', !empty);
+  promptInput.placeholder = empty ? '¿En qué puedo ayudarte hoy?' : 'Responde a Claude…';
+  updateTopTitle();
+}
+
+function updateTopTitle() {
+  if (!topChatTitle) return;
+  if (incognitoMode) {
+    topChatTitle.innerHTML = '<span class="incognito-chip"><svg><use href="#i-ghost"/></svg>Chat incógnito</span>';
+    return;
+  }
+  const empty = emptyState.style.display !== 'none';
+  const session = lastSessionsList.find(s => s.id === activeSessionId);
+  topChatTitle.textContent = empty ? '' : (session ? session.title : '');
+}
+
+function updateGreeting() {
+  const greeting = document.getElementById('greeting-text');
+  if (!greeting) return;
+  const name = readPref('claudezer0_display_name', '').trim();
+  if (incognitoMode) {
+    greeting.textContent = 'Chat incógnito';
+  } else {
+    greeting.textContent = name ? `¿En qué estamos pensando, ${name}?` : '¿En qué estamos pensando?';
+  }
+}
+
+function updateUserIdentity() {
+  const name = readPref('claudezer0_display_name', '').trim() || currentUsername || 'Usuario';
+  if (userDisplayName) userDisplayName.textContent = name;
+  if (userAvatarLetter) {
+    const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w.charAt(0)).join('');
+    userAvatarLetter.textContent = (initials || 'U').toUpperCase();
+  }
+  const email = document.getElementById('user-menu-email');
+  if (email) email.textContent = serverAuthInfo && serverAuthInfo.email ? serverAuthInfo.email : '';
+}
+
+// --- Incógnito --------------------------------------------------------------
+function discardIncognitoSession({ keepalive = false } = {}) {
+  if (!incognitoSessionId) return;
+  const id = incognitoSessionId;
+  incognitoSessionId = null;
+  if (activeSessionId === id) activeSessionId = null;
+  fetch(`/api/sessions/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    keepalive,
+    headers: { 'Authorization': `Bearer ${authToken}` }
+  }).catch(() => {});
+}
+
+function setIncognito(on) {
+  if (on === incognitoMode) return;
+  if (!on) discardIncognitoSession();
+  incognitoMode = on;
+  mainApp.classList.toggle('incognito', on);
+  const btn = document.getElementById('btn-incognito');
+  if (btn) {
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.title = on ? 'Salir del chat incógnito' : 'Chat incógnito';
+  }
+  const plusLabel = document.getElementById('plus-incognito-label');
+  if (plusLabel) plusLabel.textContent = on ? 'Salir del chat incógnito' : 'Chat incógnito';
+  newChat();
+  updateGreeting();
+  updateTopTitle();
+  if (on) showToast('Chat incógnito: no se guardará en Recientes');
+}
+
+// --- Tema, acento y fuente --------------------------------------------------
+function resolveTheme(choice) {
+  if (choice === 'system') return darkSchemeQuery.matches ? 'dark' : 'light';
+  return choice === 'dark' ? 'dark' : 'light';
+}
+
+function applyTheme(choice, { persist = true } = {}) {
+  if (persist) writePref('claudezer0_theme', choice);
+  const resolved = resolveTheme(choice);
+  document.documentElement.dataset.theme = resolved;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', resolved === 'dark' ? '#262624' : '#faf9f5');
+  document.querySelectorAll('[data-theme-choice]').forEach(b => b.classList.toggle('active', b.dataset.themeChoice === choice));
+  document.querySelectorAll('#pz-theme button').forEach(b => b.classList.toggle('active', b.dataset.value === choice));
+}
+
+function applyAccent(value, { persist = true } = {}) {
+  if (persist) writePref('claudezer0_accent', value);
+  document.documentElement.dataset.accent = value;
+  document.querySelectorAll('#pz-accent button').forEach(b => b.classList.toggle('active', b.dataset.value === value));
+}
+
+function applyChatFont(value, { persist = true } = {}) {
+  if (persist) writePref('claudezer0_chat_font', value);
+  document.documentElement.dataset.chatFont = value;
+  document.querySelectorAll('#pz-font button').forEach(b => b.classList.toggle('active', b.dataset.value === value));
+}
+
+// --- Modal Personalizar -----------------------------------------------------
+let personalizeSnapshot = null;
+
+function openPersonalizeModal() {
+  closeAllDropdowns();
+  closeMobileSidebar();
+  personalizeSnapshot = {
+    theme: readPref('claudezer0_theme', 'light'),
+    accent: readPref('claudezer0_accent', 'terracotta'),
+    font: readPref('claudezer0_chat_font', 'serif')
+  };
+  document.getElementById('pz-name').value = readPref('claudezer0_display_name', '');
+  document.getElementById('pz-instructions').value = readPref('claudezer0_custom_instructions', '');
+  applyTheme(personalizeSnapshot.theme, { persist: false });
+  applyAccent(personalizeSnapshot.accent, { persist: false });
+  applyChatFont(personalizeSnapshot.font, { persist: false });
+  document.getElementById('personalize-modal').style.display = 'flex';
+  document.getElementById('pz-name').focus();
+}
+
+function closePersonalizeModal({ revert = true } = {}) {
+  const modal = document.getElementById('personalize-modal');
+  if (!modal || modal.style.display === 'none') return;
+  if (revert && personalizeSnapshot) {
+    applyTheme(personalizeSnapshot.theme, { persist: false });
+    applyAccent(personalizeSnapshot.accent, { persist: false });
+    applyChatFont(personalizeSnapshot.font, { persist: false });
+  }
+  personalizeSnapshot = null;
+  modal.style.display = 'none';
+}
+
+function savePersonalization() {
+  const pick = (groupId, fallback) => {
+    const active = document.querySelector(`#${groupId} button.active`);
+    return active ? active.dataset.value : fallback;
+  };
+  writePref('claudezer0_display_name', document.getElementById('pz-name').value.trim());
+  writePref('claudezer0_custom_instructions', document.getElementById('pz-instructions').value.trim());
+  applyTheme(pick('pz-theme', 'light'));
+  applyAccent(pick('pz-accent', 'terracotta'));
+  applyChatFont(pick('pz-font', 'serif'));
+  closePersonalizeModal({ revert: false });
+  updateGreeting();
+  updateUserIdentity();
+  showToast('Preferencias guardadas');
+}
+
+// --- Submenús y desplegables ------------------------------------------------
+function bindSubmenu(submenu) {
+  const trigger = submenu.querySelector('.submenu-trigger');
+  const setOpen = (open) => {
+    submenu.classList.toggle('open', open);
+    trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) placeSubmenuFlyout(submenu);
+  };
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const willOpen = !submenu.classList.contains('open');
+    submenu.parentElement.closest('.dropdown-menu')?.querySelectorAll('.submenu.open').forEach(s => s !== submenu && s.classList.remove('open'));
+    setOpen(willOpen);
+  });
+  // En escritorio se abren al pasar el ratón, como en claude.ai
+  const canHover = window.matchMedia('(hover: hover) and (min-width: 769px)');
+  submenu.addEventListener('mouseenter', () => { if (canHover.matches) setOpen(true); });
+  submenu.addEventListener('mouseleave', () => { if (canHover.matches) setOpen(false); });
+}
+
+function bindDropdown(dropdownId, triggerId, onOpen) {
+  const dropdown = document.getElementById(dropdownId);
+  const trigger = document.getElementById(triggerId);
+  if (!dropdown || !trigger) return;
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const willOpen = !dropdown.classList.contains('open');
+    closeAllDropdowns();
+    if (willOpen) {
+      if (onOpen) onOpen();
+      dropdown.classList.add('open');
+      trigger.setAttribute('aria-expanded', 'true');
+      placeDropdownMenu(dropdown);
+    }
+  });
+}
+
+// Abrir el menú hacia arriba o hacia abajo según el espacio disponible en pantalla
+function placeDropdownMenu(dropdown) {
+  const menu = dropdown.querySelector(':scope > .dropdown-menu');
+  if (!menu) return;
+  menu.classList.remove('flip-up', 'flip-down');
+  const anchor = dropdown.getBoundingClientRect();
+  const needed = menu.offsetHeight + 12;
+  const spaceBelow = window.innerHeight - anchor.bottom;
+  const spaceAbove = anchor.top;
+  const opensDown = menu.getBoundingClientRect().top >= anchor.top;
+  if (opensDown && spaceBelow < needed && spaceAbove > spaceBelow) menu.classList.add('flip-up');
+  if (!opensDown && spaceAbove < needed && spaceBelow > spaceAbove) menu.classList.add('flip-down');
+}
+
+// Submenú lateral: alinearlo por arriba o por abajo para que no se salga de la pantalla
+function placeSubmenuFlyout(submenu) {
+  const flyout = submenu.querySelector(':scope > .submenu-flyout');
+  if (!flyout || mobileQuery.matches) return;
+  flyout.classList.remove('flyout-up');
+  const rect = flyout.getBoundingClientRect();
+  if (rect.bottom > window.innerHeight - 8) flyout.classList.add('flyout-up');
+}
+
+function renderEffortOptions() {
+  const list = document.getElementById('effort-options');
+  if (!list) return;
+  list.innerHTML = '';
+  EFFORT_OPTIONS.forEach(opt => {
+    const item = document.createElement('div');
+    item.className = `dropdown-item${opt.value === selectedEffort ? ' selected' : ''}`;
+    item.setAttribute('role', 'option');
+    item.innerHTML = `
+      <div class="item-content">
+        <div class="item-title">${opt.label}</div>
+        <div class="item-desc">${opt.desc}</div>
+      </div>
+      <svg class="item-check"><use href="#i-check"/></svg>
+    `;
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectedEffort = opt.value;
+      writePref('claudezer0_effort', opt.value);
+      renderEffortOptions();
+      updateModelTrigger();
+      closeAllDropdowns();
+    });
+    list.appendChild(item);
+  });
+  const current = document.getElementById('effort-current-label');
+  if (current) current.textContent = effortLabel(selectedEffort);
+}
+
+function setOutputStyle(value) {
+  selectedOutputStyle = OUTPUT_STYLE_LABELS[value] ? value : 'default';
+  writePref('claudezer0_output_style', selectedOutputStyle);
+  const label = document.getElementById('current-output-label');
+  if (label) label.textContent = OUTPUT_STYLE_LABELS[selectedOutputStyle];
+  document.querySelectorAll('.output-option').forEach(opt => {
+    opt.classList.toggle('selected', opt.dataset.value === selectedOutputStyle);
+  });
+}
+
+// --- Proyecto (carpeta de trabajo) -------------------------------------------
+function renderProjectMenu() {
+  const list = document.getElementById('project-recent-list');
+  if (!list) return;
+  const seen = new Set();
+  const folders = [currentWorkspace, ...lastSessionsList.map(s => s.workspace)]
+    .filter(p => p && !seen.has(p.toLowerCase()) && seen.add(p.toLowerCase()))
+    .slice(0, 6);
+
+  list.innerHTML = '';
+  if (folders.length === 0) {
+    list.innerHTML = '<div class="project-recent-empty">Aún no hay carpetas recientes</div>';
+    return;
+  }
+  folders.forEach(folder => {
+    const row = document.createElement('div');
+    row.className = `dropdown-item project-row${folder === currentWorkspace ? ' selected' : ''}`;
+    row.innerHTML = `
+      <div class="item-content">
+        <div class="item-title">${escapeHtml(shortPathName(folder))}</div>
+        <span class="project-path" title="${escapeHtml(folder)}">${escapeHtml(folder)}</span>
+      </div>
+      <svg class="item-check"><use href="#i-check"/></svg>
+    `;
+    row.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeAllDropdowns();
+      if (folder !== currentWorkspace) switchWorkspaceQuiet(folder);
+    });
+    list.appendChild(row);
+  });
+}
+
+async function switchWorkspaceQuiet(folder) {
+  try {
+    const res = await authFetch('/api/workspace', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: folder })
+    });
+    const data = await res.json();
+    if (data.success) {
+      updateWorkspaceUI(data.workspace);
+      showToast(`Proyecto: ${shortPathName(data.workspace)}`);
+    } else {
+      showToast(data.error || 'No se pudo cambiar de carpeta');
+    }
+  } catch (err) {
+    showToast('No se pudo cambiar de carpeta');
+  }
+}
+
+// --- Barra lateral -----------------------------------------------------------
+function setSidebarCollapsed(collapsed) {
+  document.documentElement.classList.toggle('sidebar-collapsed', collapsed);
+  writePref('claudezer0_sidebar_collapsed', collapsed ? '1' : '0');
+}
+
+function focusSidebarSearch() {
+  if (mobileQuery.matches) {
+    openMobileSidebar();
+  } else {
+    setSidebarCollapsed(false);
+  }
+  const input = document.getElementById('sidebar-search-input');
+  if (input) setTimeout(() => input.focus(), 50);
+}
+
+// --- Montaje -----------------------------------------------------------------
+function setupShell() {
+  if (shellReady) return;
+  shellReady = true;
+
+  // Estado inicial
+  new MutationObserver(syncEmptyState).observe(emptyState, { attributes: true, attributeFilter: ['style'] });
+  syncEmptyState();
+  updateGreeting();
+  updateUserIdentity();
+  renderEffortOptions();
+  setOutputStyle(selectedOutputStyle);
+  applyTheme(readPref('claudezer0_theme', 'light'), { persist: false });
+  darkSchemeQuery.addEventListener('change', () => {
+    if (readPref('claudezer0_theme', 'light') === 'system') applyTheme('system', { persist: false });
+  });
+  adjustTextareaHeight();
+
+  // Barra lateral
+  document.getElementById('btn-collapse-sidebar')?.addEventListener('click', () => {
+    if (mobileQuery.matches) closeMobileSidebar();
+    else setSidebarCollapsed(true);
+  });
+  document.getElementById('btn-nav-personalize')?.addEventListener('click', openPersonalizeModal);
+  document.getElementById('btn-nav-sync')?.addEventListener('click', () => { closeMobileSidebar(); handleSyncModels(); });
+  document.getElementById('btn-nav-add-model')?.addEventListener('click', () => { closeMobileSidebar(); openCustomModelModal(); });
+  const moreBtn = document.getElementById('btn-nav-more');
+  const moreList = document.getElementById('nav-more-list');
+  moreBtn?.addEventListener('click', () => {
+    const open = moreList.hidden;
+    moreList.hidden = !open;
+    moreBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+
+  const searchInput = document.getElementById('sidebar-search-input');
+  searchInput?.addEventListener('input', () => {
+    sessionFilter = searchInput.value;
+    renderSessionsList(lastSessionsList);
+  });
+  searchInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      searchInput.value = '';
+      sessionFilter = '';
+      renderSessionsList(lastSessionsList);
+      searchInput.blur();
+    }
+  });
+
+  // Incógnito
+  document.getElementById('btn-incognito')?.addEventListener('click', () => setIncognito(!incognitoMode));
+  window.addEventListener('pagehide', () => discardIncognitoSession({ keepalive: true }));
+
+  // Menú "+"
+  bindDropdown('dropdown-plus', 'btn-composer-plus');
+  document.getElementById('btn-plus-commands')?.addEventListener('click', () => {
+    promptInput.value = '/';
+    promptInput.focus();
+    adjustTextareaHeight();
+    handlePromptInputSlash();
+  });
+  document.getElementById('btn-plus-folder')?.addEventListener('click', openWorkspaceModal);
+  document.getElementById('btn-plus-incognito')?.addEventListener('click', () => setIncognito(!incognitoMode));
+
+  // Proyecto, estilo y usuario
+  bindDropdown('dropdown-project', 'input-ws-pill', renderProjectMenu);
+  document.getElementById('btn-project-browse')?.addEventListener('click', openWorkspaceModal);
+
+  bindDropdown('dropdown-output', 'btn-output-trigger');
+  document.querySelectorAll('.output-option').forEach(opt => {
+    opt.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setOutputStyle(opt.dataset.value);
+      closeAllDropdowns();
+    });
+  });
+
+  bindDropdown('dropdown-user', 'btn-sidebar-user-pill');
+  document.getElementById('btn-user-personalize')?.addEventListener('click', openPersonalizeModal);
+  document.getElementById('btn-user-key')?.addEventListener('click', openKeyModal);
+  document.querySelectorAll('[data-theme-choice]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      applyTheme(btn.dataset.themeChoice);
+    });
+  });
+
+  // Submenú de esfuerzo
+  const effortSubmenu = document.getElementById('effort-submenu');
+  if (effortSubmenu) bindSubmenu(effortSubmenu);
+
+  // Modal Personalizar
+  document.getElementById('btn-close-personalize')?.addEventListener('click', () => closePersonalizeModal());
+  document.getElementById('btn-cancel-personalize')?.addEventListener('click', () => closePersonalizeModal());
+  document.getElementById('btn-save-personalize')?.addEventListener('click', savePersonalization);
+  document.querySelectorAll('#pz-theme button').forEach(b => b.addEventListener('click', () => applyTheme(b.dataset.value, { persist: false })));
+  document.querySelectorAll('#pz-accent button').forEach(b => b.addEventListener('click', () => applyAccent(b.dataset.value, { persist: false })));
+  document.querySelectorAll('#pz-font button').forEach(b => b.addEventListener('click', () => applyChatFont(b.dataset.value, { persist: false })));
+
+  // Atajos de teclado
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      focusSidebarSearch();
+    }
+    if (e.key === 'Escape') closePersonalizeModal();
   });
 }
 

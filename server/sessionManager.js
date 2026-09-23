@@ -23,9 +23,11 @@ try {
   sessions = {};
 }
 
+// Las conversaciones incógnito solo viven en memoria: nunca se escriben en disco
 function saveSessions() {
   try {
-    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
+    const persistent = Object.fromEntries(Object.entries(sessions).filter(([, s]) => !s.incognito));
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(persistent, null, 2));
   } catch (e) {
     console.error('Error saving sessions:', e.message);
   }
@@ -33,6 +35,7 @@ function saveSessions() {
 
 export function getAllSessions() {
   return Object.values(sessions)
+    .filter(s => !s.incognito)
     .map(s => ({
       id: s.id,
       title: s.title || 'Nueva conversación',
@@ -48,7 +51,7 @@ export function getSession(id) {
   return sessions[id] || null;
 }
 
-export function createSession(title = 'Nueva conversación', workspace = '') {
+export function createSession(title = 'Nueva conversación', workspace = '', { incognito = false } = {}) {
   const id = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
   const now = Date.now();
   const newSession = {
@@ -58,7 +61,8 @@ export function createSession(title = 'Nueva conversación', workspace = '') {
     claudeSessionId: null,
     createdAt: now,
     updatedAt: now,
-    messages: []
+    messages: [],
+    ...(incognito ? { incognito: true } : {})
   };
   sessions[id] = newSession;
   saveSessions();
@@ -101,11 +105,15 @@ export function addMessageToSession(id, message) {
   return s;
 }
 
+/**
+ * Eliminar una conversación. Devuelve la sesión eliminada (o null si no existía)
+ */
 export function deleteSession(id) {
-  if (sessions[id]) {
+  const session = sessions[id];
+  if (session) {
     delete sessions[id];
     saveSessions();
-    return true;
+    return session;
   }
-  return false;
+  return null;
 }

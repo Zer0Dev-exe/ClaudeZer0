@@ -222,24 +222,30 @@ async function fetchRemoteModels(credential) {
 }
 
 /**
- * De la lista remota, quedarse solo con el modelo más reciente de cada familia
+ * Ordenar la lista remota: primero el modelo más reciente de cada familia (selector principal)
+ * y después el resto como "legacy" (submenú "Más modelos"). Claude 3.x queda fuera.
  */
-function pickLatestPerFamily(remoteModels) {
-  const latest = new Map();
+function buildCatalogFromRemote(remoteModels) {
+  const byFamily = new Map(FAMILY_ORDER.map(f => [f, []]));
   for (const rm of remoteModels) {
     const family = getFamily(rm.id);
     if (!family || /^claude-3/i.test(rm.id)) continue;
-    const prev = latest.get(family);
-    if (!prev || new Date(rm.created_at) > new Date(prev.created_at)) {
-      latest.set(family, rm);
-    }
+    byFamily.get(family).push(rm);
   }
-  return FAMILY_ORDER
-    .filter(f => latest.has(f))
-    .map(f => {
-      const rm = latest.get(f);
-      return buildModelEntry(rm.id, rm.display_name || rm.id, rm.created_at);
-    });
+  for (const list of byFamily.values()) {
+    list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  }
+
+  const toEntry = rm => buildModelEntry(rm.id, rm.display_name || rm.id, rm.created_at);
+  const latest = FAMILY_ORDER.filter(f => byFamily.get(f).length > 0).map(f => toEntry(byFamily.get(f)[0]));
+  const legacy = FAMILY_ORDER.flatMap(f =>
+    byFamily.get(f).slice(1).map(rm => {
+      const { isDefault, badge, ...entry } = toEntry(rm);
+      const familyName = f.charAt(0).toUpperCase() + f.slice(1);
+      return { ...entry, badge: 'Anterior', desc: `Generación anterior de ${familyName}`, legacy: true };
+    })
+  );
+  return { latest, legacy };
 }
 
 /**
@@ -258,14 +264,15 @@ export async function syncModelsFromAnthropic(credential) {
 
   try {
     const remoteModels = await fetchRemoteModels(credential);
-    const latest = pickLatestPerFamily(remoteModels);
+    const { latest, legacy } = buildCatalogFromRemote(remoteModels);
     if (latest.length === 0) {
       return { success: false, message: 'No se encontraron modelos en la respuesta de Anthropic', models: getAvailableModels() };
     }
 
+    const official = [...latest, ...legacy];
     const previous = getAvailableModels();
-    const userModels = previous.filter(m => isUserModel(m) && !latest.some(l => l.id === m.id));
-    const models = [...latest, ...userModels];
+    const userModels = previous.filter(m => isUserModel(m) && !official.some(o => o.id === m.id));
+    const models = [...latest, ...userModels, ...legacy];
 
     const previousIds = new Set(previous.map(m => m.id));
     const nextIds = new Set(models.map(m => m.id));

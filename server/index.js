@@ -21,7 +21,8 @@ import {
   cancelActiveTask,
   isTaskActive,
   getAppMode,
-  validateApiKey
+  validateApiKey,
+  deleteClaudeTranscript
 } from './claudeRunner.js';
 
 import {
@@ -205,8 +206,12 @@ app.get('/api/sessions/:id', requireAuth, (req, res) => {
 });
 
 app.delete('/api/sessions/:id', requireAuth, (req, res) => {
-  const ok = deleteSession(req.params.id);
-  res.json({ success: ok });
+  const removed = deleteSession(req.params.id);
+  // En incógnito se borra también la transcripción que guarda Claude Code en disco
+  if (removed && removed.incognito && removed.claudeSessionId) {
+    deleteClaudeTranscript(removed.claudeSessionId);
+  }
+  res.json({ success: !!removed });
 });
 
 app.get('/api/workspace', requireAuth, (req, res) => {
@@ -294,13 +299,13 @@ wss.on('connection', (ws, req) => {
       }
 
       if (data.type === 'run_task') {
-        const { prompt, workspace, sessionId, permissionMode, model, apiKey } = data;
+        const { prompt, workspace, sessionId, permissionMode, model, apiKey, effort, outputStyle, customInstructions, incognito } = data;
         const targetWs = workspace || getCurrentWorkspace();
 
         // Get or create session
         let currentSession = sessionId ? getSession(sessionId) : null;
         if (!currentSession) {
-          currentSession = createSession('Nueva conversación', targetWs);
+          currentSession = createSession('Nueva conversación', targetWs, { incognito: !!incognito });
         }
 
         const userMsg = {
@@ -335,6 +340,9 @@ wss.on('connection', (ws, req) => {
             permissionMode: permissionMode || 'acceptEdits',
             model: model || null,
             apiKey: apiKey || null,
+            effort: effort || null,
+            outputStyle: outputStyle || null,
+            customInstructions: typeof customInstructions === 'string' ? customInstructions : null,
             onEvent: (event) => {
               if (event.type === 'text_delta') {
                 assistantMsg.text += event.text;
