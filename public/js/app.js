@@ -294,7 +294,7 @@ async function authFetch(url, options = {}) {
 // ==========================================================================
 function initApp() {
   initModelAndMode();
-  loadModels();
+  loadModels().then(syncModelsSilently);
   connectWebSocket();
   loadInitialStatus();
   loadSessions();
@@ -351,9 +351,7 @@ async function loadInitialStatus() {
       updateWorkspaceUI(data.currentWorkspace);
     }
     if (data.availableModels && Array.isArray(data.availableModels)) {
-      availableModelsList = data.availableModels;
-      rebuildModelsMap();
-      renderModelDropdown();
+      applyModelsList(data.availableModels, data.defaultModel);
     }
   } catch (e) {}
 }
@@ -363,12 +361,35 @@ async function loadModels() {
     const res = await authFetch('/api/models');
     const data = await res.json();
     if (data.success && Array.isArray(data.models)) {
-      availableModelsList = data.models;
-      rebuildModelsMap();
-      renderModelDropdown();
+      applyModelsList(data.models, data.defaultModel);
     }
   } catch (err) {
     console.warn('Error cargando modelos:', err);
+  }
+}
+
+// Aplicar un catálogo nuevo; si el modelo seleccionado ya no existe, pasar al por defecto
+function applyModelsList(models, defaultModel) {
+  if (!Array.isArray(models) || models.length === 0) return;
+  availableModelsList = models;
+  rebuildModelsMap();
+  if (!availableModelsList.some(m => m.id === selectedModel)) {
+    const fallback = availableModelsList.find(m => m.id === defaultModel)
+      || availableModelsList.find(m => m.isDefault)
+      || availableModelsList[0];
+    setModel(fallback.id, fallback.name, fallback.tag);
+  }
+  renderModelDropdown();
+}
+
+// Consultar a Anthropic los modelos actuales al abrir la app (sin avisos si falla)
+async function syncModelsSilently() {
+  try {
+    const res = await authFetch('/api/models/sync', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) applyModelsList(data.models, data.defaultModel);
+  } catch (err) {
+    console.warn('No se pudo sincronizar modelos con Anthropic:', err);
   }
 }
 
@@ -877,7 +898,7 @@ function handleSlashMode(arg) {
 
   // Interactive card
   const cardId = 'mode-card-' + Date.now();
-  const currentMode = permissionMode ? permissionMode.value : (localStorage.getItem('claudezer0_mode') || 'acceptEdits');
+  const currentMode = permissionMode ? permissionMode.value : (localStorage.getItem('claudezer0_mode') || 'auto');
   let buttonsHtml = '';
   const modeDescriptions = {
     'acceptEdits': 'Recomendado: Claude edita y crea archivos automáticamente.',
@@ -933,7 +954,7 @@ function handleSlashMode(arg) {
 
 function handleSlashStatus() {
   const currentInfo = getModelInfo(selectedModel);
-  const curMode = permissionMode ? permissionMode.value : (localStorage.getItem('claudezer0_mode') || 'acceptEdits');
+  const curMode = permissionMode ? permissionMode.value : (localStorage.getItem('claudezer0_mode') || 'auto');
   const modeInfo = EXECUTION_MODES[curMode] || { label: curMode };
 
   const keyStatusText = clientApiKey
@@ -1056,7 +1077,7 @@ async function handleSlashSync() {
             <span>Modelos sincronizados con éxito</span>
           </div>
           <div style="font-size:0.84rem; margin-top:4px;">
-            Se han sincronizado ${data.models.length} modelos. Disponibles para usar con <code>/model</code> o en el selector superior.
+            Modelos actuales: ${data.models.map(m => escapeHtml(m.name)).join(', ')}.${data.removedCount ? ` Se han eliminado ${data.removedCount} modelos antiguos.` : ''} Disponibles con <code>/model</code> o en el selector superior.
           </div>
         </div>
       `;
@@ -1124,7 +1145,7 @@ function sendPrompt(customPrompt) {
       prompt,
       workspace: currentWorkspace,
       sessionId: activeSessionId,
-      permissionMode: permissionMode ? permissionMode.value : 'acceptEdits',
+      permissionMode: permissionMode ? permissionMode.value : 'auto',
       model: selectedModel,
       apiKey: clientApiKey || null
     }));
@@ -1228,6 +1249,10 @@ function handleWsMessage(data) {
 
     case 'workspace_changed':
       updateWorkspaceUI(data.workspace);
+      break;
+
+    case 'models_updated':
+      applyModelsList(data.models, data.defaultModel);
       break;
   }
 }
@@ -1800,8 +1825,9 @@ async function handleSyncModels() {
     const res = await authFetch('/api/models/sync', { method: 'POST' });
     const data = await res.json();
     if (data.success) {
-      await loadModels();
-      showToast(`Modelos sincronizados (${data.models.length} disponibles)`);
+      applyModelsList(data.models, data.defaultModel);
+      const removedTxt = data.removedCount ? `, ${data.removedCount} antiguos eliminados` : '';
+      showToast(`Modelos sincronizados (${data.models.length} disponibles${removedTxt})`);
     } else {
       showToast(data.message || 'Error sincronizando modelos');
     }
@@ -1935,8 +1961,12 @@ function initModelAndMode() {
   setModel(modelInfo.id, modelInfo.name, modelInfo.tag);
   renderModelDropdown();
 
-  const savedMode = localStorage.getItem('claudezer0_mode') || 'acceptEdits';
-  const modeInfo = EXECUTION_MODES[savedMode] || EXECUTION_MODES['acceptEdits'];
+  let savedMode = localStorage.getItem('claudezer0_mode') || 'auto';
+  if (savedMode === 'acceptEdits') {
+    savedMode = 'auto';
+    localStorage.setItem('claudezer0_mode', savedMode);
+  }
+  const modeInfo = EXECUTION_MODES[savedMode] || EXECUTION_MODES['auto'];
   setPermissionMode(savedMode, modeInfo.icon, modeInfo.label);
 }
 

@@ -433,7 +433,13 @@ function getLocalIps() {
   return ips;
 }
 
+// Mantener el catálogo de modelos al día con la API de Anthropic
+const MODELS_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
+setInterval(() => runModelsSync(null, 'periódica'), MODELS_SYNC_INTERVAL_MS).unref();
+
 server.listen(PORT, '0.0.0.0', () => {
+  runModelsSync(null, 'arranque');
+
   const ips = getLocalIps();
   const primaryIp = ips.length > 0 ? ips[0].address : 'localhost';
   const currentMode = getAppMode();
