@@ -9,7 +9,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Plataforma-Windows%20%7C%20Linux%20%7C%20macOS-informational?style=flat-square&logo=linux" alt="Multiplataforma">
   <img src="https://img.shields.io/badge/Node.js-%3E%3D18.0.0-success?style=flat-square&logo=node.js" alt="Node.js">
-  <img src="https://img.shields.io/badge/Claude%20Code-2.1.278-D97757?style=flat-square" alt="Claude Code">
+  <img src="https://img.shields.io/badge/Claude%20Code-2.1.280-D97757?style=flat-square" alt="Claude Code">
   <img src="https://img.shields.io/badge/Modos-Hoster%20%7C%20Client-orange?style=flat-square" alt="Modos">
   <img src="https://img.shields.io/badge/Licencia-MIT-blue?style=flat-square" alt="Licencia">
 </p>
@@ -18,10 +18,10 @@
 
 ## 🌟 ¿Qué es ClaudeZer0?
 
-**ClaudeZer0** transforma el CLI de **Claude Code** en una experiencia web y móvil ultra fluida, inspirada en el diseño visual de **Claude.ai**: paleta cálida oscura con toques terracota, tipografía editorial *Newsreader Serif*, streaming en tiempo real con razonamiento desplegable (*thinking process*), explorador interactivo de proyectos y ejecución multiplataforma.
+**ClaudeZer0** transforma el CLI de **Claude Code** en una experiencia web y móvil ultra fluida, inspirada en el diseño visual de **Claude.ai**: paleta cálida con tema claro y oscuro y toques terracota, tipografía editorial *Newsreader Serif*, streaming en tiempo real con razonamiento desplegable (*thinking process*), explorador interactivo de proyectos y ejecución multiplataforma.
 
 <p align="center">
-  <img src="https://media.discordapp.net/attachments/1405460793998315633/1551909335607676968/image.png?ex=6ab3afb2&is=6ab25e32&hm=976551f2bdd07215025e312f619647b294c0d012a7ebf9e003a38604e834c02c&=&format=webp&quality=lossless&width=1253&height=1280" alt="ClaudeZer0 Dashboard Preview" width="100%">
+  <img src="dashboard.png" alt="ClaudeZer0: pantalla de inicio con barra lateral, saludo y selector de modelo" width="100%">
 </p>
 
 ---
