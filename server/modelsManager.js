@@ -1,4 +1,5 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -7,37 +8,67 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 const modelsFilePath = path.join(projectRoot, 'data', 'models.json');
 
-// Modelos por defecto con sus alias oficiales para Claude Code CLI
-const DEFAULT_MODELS = [
-  {
-    id: 'sonnet',
-    name: 'Claude 3.7 Sonnet',
-    tag: 'Híbrido',
-    badge: 'Recomendado',
-    desc: 'Razonamiento híbrido profundo, alta velocidad y codificación avanzada',
-    icon: 'sonnet',
-    isDefault: true
-  },
-  {
-    id: 'haiku',
-    name: 'Claude 3.5 Haiku',
-    tag: 'Ultrarrápido',
-    badge: 'Rápido',
-    desc: 'Respuestas instantáneas y máxima agilidad para tareas rápidas y directas',
-    icon: 'haiku'
-  },
-  {
-    id: 'opus',
-    name: 'Claude 3 Opus',
-    tag: 'Profundo',
-    badge: 'Analítico',
-    desc: 'Gran potencia analítica para comprensión profunda de problemas complejos',
-    icon: 'opus'
-  }
-];
+const ANTHROPIC_API = 'https://api.anthropic.com';
+
+// Familias de modelos, en el orden en que se muestran en el selector
+const FAMILIES = {
+  fable: { tag: 'Máximo', badge: 'Nuevo', desc: 'Para tus desafíos más difíciles', icon: 'opus' },
+  opus: { tag: 'Profundo', badge: 'Recomendado', desc: 'El más capaz para trabajos ambiciosos', icon: 'opus' },
+  sonnet: { tag: 'Equilibrado', badge: 'Eficiente', desc: 'Lo más eficiente para las tareas diarias', icon: 'sonnet' },
+  haiku: { tag: 'Ultrarrápido', badge: 'Rápido', desc: 'La más rápida para respuestas inmediatas', icon: 'haiku' }
+};
+const FAMILY_ORDER = Object.keys(FAMILIES);
+
+// Familia que se selecciona por defecto
+const DEFAULT_FAMILY = 'opus';
+
+// Catálogo de respaldo, solo para cuando todavía no se ha podido consultar la API
+const FALLBACK_MODELS = [
+  { id: 'claude-fable-5-1', name: 'Claude Fable 5.1' },
+  { id: 'claude-opus-5-5', name: 'Claude Opus 5.5' },
+  { id: 'claude-sonnet-5', name: 'Claude Sonnet 5' },
+  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' }
+].map(m => buildModelEntry(m.id, m.name));
+
+function getFamily(id) {
+  const lower = String(id || '').toLowerCase();
+  return FAMILY_ORDER.find(f => lower.includes(f)) || null;
+}
+
+function buildModelEntry(id, name, createdAt = null) {
+  const family = getFamily(id);
+  const meta = FAMILIES[family] || { tag: 'Reciente', badge: 'Anthropic', desc: `Modelo ${name}`, icon: 'sonnet' };
+  return {
+    id,
+    name,
+    tag: meta.tag,
+    badge: meta.badge,
+    desc: meta.desc,
+    icon: meta.icon,
+    source: 'anthropic',
+    ...(createdAt ? { createdAt } : {}),
+    ...(family === DEFAULT_FAMILY ? { isDefault: true } : {})
+  };
+}
+
+// Modelos añadidos a mano por el usuario (los que no vienen de Anthropic ni del catálogo base)
+function isUserModel(m) {
+  if (m.source === 'anthropic') return false;
+  if (!m.custom) return false;
+  // Entradas de sincronizaciones antiguas que se marcaban como custom
+  if (m.badge === 'Oficial' || m.badge === 'Anthropic') return false;
+  return true;
+}
+
+// Modelos retirados (Claude 3.x y alias genéricos antiguos)
+function isLegacyModel(m) {
+  const id = String(m.id || '').toLowerCase();
+  const name = String(m.name || '').toLowerCase();
+  return /^claude-3/.test(id) || /claude 3(\.\d)?\b/.test(name) || (['sonnet', 'haiku', 'opus'].includes(id) && !m.custom);
+}
 
 /**
- * Cargar lista de modelos persistida o inicializar con los por defecto
+ * Cargar lista de modelos persistida o inicializar con el catálogo de respaldo
  */
 export function getAvailableModels() {
   try {
@@ -45,16 +76,32 @@ export function getAvailableModels() {
       const content = fs.readFileSync(modelsFilePath, 'utf-8');
       const parsed = JSON.parse(content);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        const kept = parsed.filter(m => !isLegacyModel(m));
+        if (kept.length === 0) {
+          saveModels(FALLBACK_MODELS);
+          return FALLBACK_MODELS;
+        }
+        if (kept.length !== parsed.length) {
+          saveModels(kept);
+        }
+        return kept;
       }
     }
   } catch (err) {
     console.warn('Error leyendo models.json, usando valores por defecto:', err.message);
   }
 
-  // Guardar archivo inicial si no existe
-  saveModels(DEFAULT_MODELS);
-  return DEFAULT_MODELS;
+  saveModels(FALLBACK_MODELS);
+  return FALLBACK_MODELS;
+}
+
+/**
+ * ID del modelo por defecto según el catálogo actual (el Opus más reciente)
+ */
+export function getDefaultModelId() {
+  const models = getAvailableModels();
+  const def = models.find(m => m.isDefault) || models.find(m => getFamily(m.id) === DEFAULT_FAMILY) || models[0];
+  return def ? def.id : FALLBACK_MODELS[1].id;
 }
 
 /**
@@ -93,7 +140,7 @@ export function addOrUpdateModel({ id, name, tag, badge, desc, icon }) {
     tag: tag ? String(tag).trim() : 'Personalizado',
     badge: badge ? String(badge).trim() : 'Nuevo',
     desc: desc ? String(desc).trim() : `Modelo personalizado ${cleanName}`,
-    icon: icon || (cleanId.includes('haiku') ? 'haiku' : cleanId.includes('opus') ? 'opus' : 'sonnet'),
+    icon: icon || (FAMILIES[getFamily(cleanId)]?.icon ?? 'sonnet'),
     custom: true,
     addedAt: Date.now()
   };
@@ -118,146 +165,126 @@ export function deleteCustomModel(id) {
   if (filtered.length === models.length) {
     return false;
   }
-  // Asegurar que al menos quede un modelo por defecto
-  if (filtered.length === 0) {
-    saveModels(DEFAULT_MODELS);
-    return true;
-  }
-  saveModels(filtered);
+  // Asegurar que al menos quede un modelo
+  saveModels(filtered.length === 0 ? FALLBACK_MODELS : filtered);
   return true;
 }
 
 /**
- * Sincronizar catálogo en vivo consultando la API de Anthropic /v1/models
+ * Token OAuth de la sesión del CLI de Claude Code del anfitrión (suscripción Pro/Max).
+ * Solo existe en disco en Windows/Linux; en macOS está en el llavero y devuelve null.
  */
-export async function syncModelsFromAnthropic(apiKey) {
-  const currentModels = getAvailableModels();
+export function getHostOAuthToken() {
+  try {
+    const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+    const credsPath = path.join(configDir, '.credentials.json');
+    if (!fs.existsSync(credsPath)) return null;
+    const oauth = JSON.parse(fs.readFileSync(credsPath, 'utf-8')).claudeAiOauth;
+    if (!oauth?.accessToken) return null;
+    if (oauth.expiresAt && Date.now() >= oauth.expiresAt) return null;
+    return oauth.accessToken;
+  } catch {
+    return null;
+  }
+}
 
-  // Si no hay API key personal, sincronizamos con las versiones canónicas de Claude
-  if (!apiKey || !apiKey.trim()) {
-    const OFFICIAL_EXTRA_MODELS = [
-      {
-        id: 'claude-3-7-sonnet-20250219',
-        name: 'Claude 3.7 Sonnet (20250219)',
-        tag: 'Híbrido',
-        badge: 'Oficial',
-        desc: 'Identificador canónico de Claude 3.7 Sonnet con razonamiento híbrido',
-        icon: 'sonnet'
-      },
-      {
-        id: 'claude-3-5-haiku-20241022',
-        name: 'Claude 3.5 Haiku (20241022)',
-        tag: 'Ultrarrápido',
-        badge: 'Oficial',
-        desc: 'Identificador canónico de Claude 3.5 Haiku para máxima velocidad',
-        icon: 'haiku'
-      },
-      {
-        id: 'claude-3-opus-20240229',
-        name: 'Claude 3 Opus (20240229)',
-        tag: 'Profundo',
-        badge: 'Oficial',
-        desc: 'Identificador canónico de Claude 3 Opus para razonamiento profundo',
-        icon: 'opus'
-      }
-    ];
+/**
+ * Consultar todos los modelos disponibles en GET /v1/models (con paginación)
+ * credential: { apiKey } o { oauthToken }
+ */
+async function fetchRemoteModels(credential) {
+  const headers = { 'anthropic-version': '2023-06-01' };
+  if (credential.apiKey) {
+    headers['x-api-key'] = credential.apiKey;
+  } else {
+    headers['authorization'] = `Bearer ${credential.oauthToken}`;
+    headers['anthropic-beta'] = 'oauth-2025-04-20';
+  }
 
-    let addedCount = 0;
-    for (const em of OFFICIAL_EXTRA_MODELS) {
-      if (!currentModels.some(m => m.id.toLowerCase() === em.id.toLowerCase())) {
-        currentModels.push({
-          ...em,
-          custom: true,
-          addedAt: Date.now()
-        });
-        addedCount++;
-      }
+  const all = [];
+  let afterId = null;
+  for (let page = 0; page < 20; page++) {
+    const url = new URL('/v1/models', ANTHROPIC_API);
+    url.searchParams.set('limit', '1000');
+    if (afterId) url.searchParams.set('after_id', afterId);
+
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error?.message || `Error HTTP ${res.status} al consultar modelos de Anthropic`);
     }
-    if (addedCount > 0) {
-      saveModels(currentModels);
+    const data = await res.json();
+    all.push(...(data.data || []));
+    if (!data.has_more || !data.last_id) break;
+    afterId = data.last_id;
+  }
+  return all;
+}
+
+/**
+ * De la lista remota, quedarse solo con el modelo más reciente de cada familia
+ */
+function pickLatestPerFamily(remoteModels) {
+  const latest = new Map();
+  for (const rm of remoteModels) {
+    const family = getFamily(rm.id);
+    if (!family || /^claude-3/i.test(rm.id)) continue;
+    const prev = latest.get(family);
+    if (!prev || new Date(rm.created_at) > new Date(prev.created_at)) {
+      latest.set(family, rm);
     }
+  }
+  return FAMILY_ORDER
+    .filter(f => latest.has(f))
+    .map(f => {
+      const rm = latest.get(f);
+      return buildModelEntry(rm.id, rm.display_name || rm.id, rm.created_at);
+    });
+}
+
+/**
+ * Sincronizar el catálogo con la API de Anthropic: sustituye los modelos oficiales por los
+ * actuales (el más reciente de cada familia) y elimina los antiguos. Conserva los añadidos a mano.
+ * credential: { apiKey } o { oauthToken }
+ */
+export async function syncModelsFromAnthropic(credential) {
+  if (!credential || (!credential.apiKey && !credential.oauthToken)) {
     return {
-      success: true,
-      addedCount,
-      totalCount: currentModels.length,
-      models: currentModels,
-      message: addedCount > 0
-        ? `Catálogo actualizado con ${addedCount} versiones canónicas de Claude.`
-        : 'Todos los modelos canónicos ya están al día.'
+      success: false,
+      message: 'No hay credenciales para consultar la API de Anthropic (añade una clave API o inicia sesión con pnpm auth:login).',
+      models: getAvailableModels()
     };
   }
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/models', {
-      headers: {
-        'x-api-key': apiKey.trim(),
-        'anthropic-version': '2023-06-01'
-      }
-    });
-
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      return {
-        success: false,
-        message: errData.error?.message || `Error HTTP ${res.status} al consultar modelos de Anthropic`
-      };
+    const remoteModels = await fetchRemoteModels(credential);
+    const latest = pickLatestPerFamily(remoteModels);
+    if (latest.length === 0) {
+      return { success: false, message: 'No se encontraron modelos en la respuesta de Anthropic', models: getAvailableModels() };
     }
 
-    const data = await res.json();
-    const remoteModels = data.data || [];
-    if (!Array.isArray(remoteModels) || remoteModels.length === 0) {
-      return { success: false, message: 'No se encontraron modelos en la respuesta de Anthropic' };
-    }
+    const previous = getAvailableModels();
+    const userModels = previous.filter(m => isUserModel(m) && !latest.some(l => l.id === m.id));
+    const models = [...latest, ...userModels];
 
-    const currentModels = getAvailableModels();
-    let addedCount = 0;
+    const previousIds = new Set(previous.map(m => m.id));
+    const nextIds = new Set(models.map(m => m.id));
+    const added = models.filter(m => !previousIds.has(m.id)).map(m => m.id);
+    const removed = previous.filter(m => !nextIds.has(m.id)).map(m => m.id);
 
-    for (const rm of remoteModels) {
-      const exists = currentModels.some(
-        m => m.id.toLowerCase() === rm.id.toLowerCase() || m.name.toLowerCase() === (rm.display_name || '').toLowerCase()
-      );
-      if (!exists && rm.id) {
-        const idLower = rm.id.toLowerCase();
-        let tag = 'Reciente';
-        let badge = 'Anthropic';
-        let icon = 'sonnet';
-
-        if (idLower.includes('haiku')) {
-          tag = 'Ultrarrápido';
-          icon = 'haiku';
-        } else if (idLower.includes('opus')) {
-          tag = 'Profundo';
-          icon = 'opus';
-        } else if (idLower.includes('sonnet')) {
-          tag = 'Híbrido';
-          icon = 'sonnet';
-        }
-
-        currentModels.push({
-          id: rm.id,
-          name: rm.display_name || rm.id,
-          tag,
-          badge,
-          desc: `Modelo sincronizado desde la API de Anthropic (${rm.id})`,
-          icon,
-          custom: true,
-          addedAt: Date.now()
-        });
-        addedCount++;
-      }
-    }
-
-    if (addedCount > 0) {
-      saveModels(currentModels);
-    }
+    saveModels(models);
 
     return {
       success: true,
-      addedCount,
-      totalCount: currentModels.length,
-      models: currentModels
+      addedCount: added.length,
+      removedCount: removed.length,
+      added,
+      removed,
+      totalCount: models.length,
+      models,
+      defaultModel: getDefaultModelId()
     };
   } catch (err) {
-    return { success: false, message: err.message || 'Error de conexión con la API de Anthropic' };
+    return { success: false, message: err.message || 'Error de conexión con la API de Anthropic', models: getAvailableModels() };
   }
 }

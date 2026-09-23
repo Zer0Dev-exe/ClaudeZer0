@@ -89,10 +89,12 @@ let currentSlashMatches = [];
 
 // Dynamic Models Catalog
 let availableModelsList = [
-  { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet', tag: 'Híbrido', desc: 'Pensamiento híbrido y alta precisión', default: true },
-  { id: 'claude-3-5-haiku', name: 'Claude 3.5 Haiku', tag: 'Ultrarrápido', desc: 'Velocidad y bajo coste' },
-  { id: 'claude-3-opus', name: 'Claude 3 Opus', tag: 'Profundo', desc: 'Capacidad profunda y contextual' }
+  { id: 'claude-fable-5-1', name: 'Claude Fable 5.1', tag: 'Máximo', desc: 'Para tus desafíos más difíciles' },
+  { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', tag: 'Profundo', desc: 'El más capaz para trabajos ambiciosos', default: true },
+  { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', tag: 'Equilibrado', desc: 'Lo más eficiente para las tareas diarias' },
+  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', tag: 'Ultrarrápido', desc: 'La más rápida para respuestas inmediatas' }
 ];
+const DEFAULT_MODEL_ID = 'claude-opus-5-5';
 let availableModelsMap = {};
 
 function rebuildModelsMap() {
@@ -100,9 +102,11 @@ function rebuildModelsMap() {
   availableModelsList.forEach(m => {
     availableModelsMap[m.id] = m;
     const lower = m.id.toLowerCase();
-    if (lower.includes('sonnet')) availableModelsMap['sonnet'] = m;
-    if (lower.includes('haiku')) availableModelsMap['haiku'] = m;
-    if (lower.includes('opus')) availableModelsMap['opus'] = m;
+    // Los alias genéricos apuntan al primer (más reciente) modelo de cada familia
+    if (lower.includes('sonnet') && !availableModelsMap['sonnet']) availableModelsMap['sonnet'] = m;
+    if (lower.includes('haiku') && !availableModelsMap['haiku']) availableModelsMap['haiku'] = m;
+    if (lower.includes('opus') && !availableModelsMap['opus']) availableModelsMap['opus'] = m;
+    if (lower.includes('fable') && !availableModelsMap['fable']) availableModelsMap['fable'] = m;
   });
 }
 rebuildModelsMap();
@@ -138,7 +142,15 @@ const EXECUTION_MODES = {
   }
 };
 
-let selectedModel = localStorage.getItem('claudezer0_model') || 'claude-3-7-sonnet';
+// Descartar selecciones guardadas de modelos retirados (Claude 3.x)
+function sanitizeStoredModel(id) {
+  if (!id || /^claude-3/i.test(id)) return DEFAULT_MODEL_ID;
+  // Alias genéricos antiguos ('sonnet', 'opus'...) -> ID concreto del modelo actual
+  if (availableModelsMap[id] && availableModelsMap[id].id !== id) return availableModelsMap[id].id;
+  return id;
+}
+
+let selectedModel = sanitizeStoredModel(localStorage.getItem('claudezer0_model'));
 
 // DOM Elements: Workspace Modal
 const workspaceModal = document.getElementById('workspace-modal');
@@ -1725,7 +1737,7 @@ async function handleSaveCustomModel() {
   if (!id) {
     customModelStatus.style.display = 'flex';
     customModelStatus.className = 'key-status-box error';
-    customModelStatus.textContent = 'El ID del modelo es obligatorio (ej. claude-3-7-sonnet-20250219).';
+    customModelStatus.textContent = 'El ID del modelo es obligatorio (ej. claude-opus-5-5).';
     return;
   }
 
@@ -1766,7 +1778,7 @@ async function deleteCustomModel(id) {
     const data = await res.json();
     if (data.success) {
       if (selectedModel === id) {
-        selectedModel = 'claude-3-7-sonnet';
+        selectedModel = DEFAULT_MODEL_ID;
         localStorage.setItem('claudezer0_model', selectedModel);
       }
       await loadModels();
@@ -1918,7 +1930,7 @@ function setupEventListeners() {
 }
 
 function initModelAndMode() {
-  const rawModel = localStorage.getItem('claudezer0_model') || 'claude-3-7-sonnet';
+  const rawModel = sanitizeStoredModel(localStorage.getItem('claudezer0_model'));
   const modelInfo = getModelInfo(rawModel);
   setModel(modelInfo.id, modelInfo.name, modelInfo.tag);
   renderModelDropdown();

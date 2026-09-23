@@ -28,7 +28,9 @@ import {
   getAvailableModels,
   addOrUpdateModel,
   deleteCustomModel,
-  syncModelsFromAnthropic
+  syncModelsFromAnthropic,
+  getDefaultModelId,
+  getHostOAuthToken
 } from './modelsManager.js';
 
 import {
@@ -113,7 +115,7 @@ app.get('/api/status', requireAuth, (req, res) => {
     currentWorkspace: getCurrentWorkspace(),
     isTaskActive: isTaskActive(),
     availableModels: getAvailableModels(),
-    defaultModel: 'sonnet'
+    defaultModel: getDefaultModelId()
   });
 });
 
@@ -122,7 +124,7 @@ app.get('/api/models', requireAuth, (req, res) => {
   res.json({
     success: true,
     models: getAvailableModels(),
-    defaultModel: 'sonnet'
+    defaultModel: getDefaultModelId()
   });
 });
 
@@ -141,9 +143,39 @@ app.delete('/api/models/:id', requireAuth, (req, res) => {
   res.json({ success: ok, models: getAvailableModels() });
 });
 
+/**
+ * Credencial para consultar /v1/models: la clave del cliente si la hay; en modo Hoster,
+ * además, la ANTHROPIC_API_KEY del .env o la sesión OAuth del CLI del anfitrión.
+ * En modo Client nunca se usan las credenciales del anfitrión.
+ */
+function resolveModelsCredential(clientKey = null) {
+  if (clientKey && clientKey.trim()) return { apiKey: clientKey.trim() };
+  if (getAppMode() === 'Client') return null;
+  const envKey = process.env.ANTHROPIC_API_KEY;
+  if (envKey && envKey.trim()) return { apiKey: envKey.trim() };
+  const oauthToken = getHostOAuthToken();
+  return oauthToken ? { oauthToken } : null;
+}
+
+async function runModelsSync(clientKey = null, reason = 'manual') {
+  const result = await syncModelsFromAnthropic(resolveModelsCredential(clientKey));
+  if (result.success) {
+    const changes = result.addedCount || result.removedCount
+      ? ` (+${result.addedCount} / -${result.removedCount})`
+      : ' (sin cambios)';
+    console.log(`[modelos] Sincronizados desde Anthropic [${reason}]: ${result.models.map(m => m.id).join(', ')}${changes}`);
+    if (result.addedCount || result.removedCount) {
+      broadcast({ type: 'models_updated', models: result.models, defaultModel: result.defaultModel });
+    }
+  } else if (reason !== 'manual') {
+    console.warn(`[modelos] No se pudo sincronizar [${reason}]: ${result.message}`);
+  }
+  return result;
+}
+
 app.post('/api/models/sync', requireAuth, async (req, res) => {
-  const clientKey = req.headers['x-claude-api-key'] || req.body.apiKey || process.env.ANTHROPIC_API_KEY || null;
-  const result = await syncModelsFromAnthropic(clientKey);
+  const clientKey = req.headers['x-claude-api-key'] || req.body.apiKey || null;
+  const result = await runModelsSync(clientKey, 'manual');
   res.json(result);
 });
 
@@ -289,7 +321,7 @@ wss.on('connection', (ws, req) => {
           thinking: '',
           tools: [],
           workspace: targetWs,
-          model: model || 'claude-3-7-sonnet-latest',
+          model: model || getDefaultModelId(),
           timestamp: Date.now(),
           status: 'running'
         };

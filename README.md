@@ -34,10 +34,10 @@
   - **`MODE=Client`**: Aislamiento estricto de credenciales. La cuenta del anfitrión queda 100% blindada y cada cliente usa su propia clave API personal guardada localmente en su navegador.
 - 🎨 **Diseño Claude Oficial con SVGs Nativos**: Cero emojis genéricos. Todos los selectores de modelos, modos de ejecución, tarjetas de inicio y diálogos emplean vectores SVG afilados y personalizados.
 - ⚡ **Selector de Modelos Claude**:
-  - **Claude 3.7 Sonnet**: Razonamiento híbrido profundo y codificación avanzada.
-  - **Claude 3.5 Sonnet**: Estabilidad y precisión probada.
-  - **Claude 3.5 Haiku**: Respuestas instantáneas y máxima velocidad.
-  - **Claude 3 Opus**: Gran profundidad analítica para retos conceptuales.
+  - **Claude Fable 5.1**: Para los desafíos más difíciles.
+  - **Claude Opus 5.5**: El más capaz para trabajos ambiciosos (por defecto).
+  - **Claude Sonnet 5**: Lo más eficiente para las tareas diarias.
+  - **Claude Haiku 4.5**: Respuestas inmediatas y máxima velocidad.
 - 🎛️ **Modos de Ejecución**:
   - **Aceptar ediciones** (`acceptEdits`): Modificación fluida de archivos con control.
   - **Autónomo** (`auto`): Flujo continuo sin pausas de confirmación.

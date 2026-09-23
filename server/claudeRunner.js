@@ -33,10 +33,11 @@ export function getClaudeBinary() {
  * Mapear identificadores de modelo a los alias oficiales requeridos por Claude Code CLI ('sonnet', 'haiku', 'opus')
  */
 export function mapModelToCli(model) {
-  if (!model) return 'sonnet';
+  if (!model) return 'opus';
   const m = String(model).trim();
   const lower = m.toLowerCase();
   if (lower.startsWith('claude-')) return m;
+  if (lower.includes('fable')) return 'claude-fable-5-1';
   if (lower.includes('haiku')) return 'haiku';
   if (lower.includes('opus')) return 'opus';
   if (lower.includes('sonnet')) return 'sonnet';
