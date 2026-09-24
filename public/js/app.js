@@ -14,6 +14,9 @@ let currentTextElement = null;
 let currentThinkingElement = null;
 let currentAccumulatedText = '';
 let currentAccumulatedThinking = '';
+// Texto del bloque visible actual (se reinicia tras cada herramienta para intercalar texto y acciones)
+let currentSegmentText = '';
+const currentToolCards = new Map();
 
 let recognition = null;
 let isListening = false;
@@ -702,10 +705,88 @@ function appendUserMsg(text) {
   scrollToBottom();
 }
 
+function shortPath(p) {
+  const parts = String(p || '').split(/[\\/]/).filter(Boolean);
+  return parts.slice(-2).join('/') || String(p || '');
+}
+
+/**
+ * Describir en lenguaje natural qué está haciendo una herramienta (verbo + objetivo)
+ */
+function describeTool(tool, input) {
+  const i = input || {};
+  const trunc = (s, n = 80) => {
+    const str = String(s || '').replace(/\s+/g, ' ').trim();
+    return str.length > n ? str.slice(0, n) + '…' : str;
+  };
+  switch (tool) {
+    case 'Read': return { verb: 'Leyendo', target: shortPath(i.file_path) };
+    case 'Write': return { verb: 'Creando', target: shortPath(i.file_path) };
+    case 'Edit':
+    case 'MultiEdit': return { verb: 'Editando', target: shortPath(i.file_path) };
+    case 'NotebookEdit': return { verb: 'Editando notebook', target: shortPath(i.notebook_path) };
+    case 'Bash': return { verb: 'Ejecutando', target: trunc(i.description || i.command) };
+    case 'Glob': return { verb: 'Buscando archivos', target: trunc(i.pattern) };
+    case 'Grep': return { verb: 'Buscando', target: trunc(i.pattern) };
+    case 'WebFetch': return { verb: 'Consultando', target: trunc(i.url) };
+    case 'WebSearch': return { verb: 'Buscando en la web', target: trunc(i.query) };
+    case 'Task':
+    case 'Agent': return { verb: 'Lanzando subagente', target: trunc(i.description) };
+    case 'TodoWrite': return { verb: 'Actualizando lista de tareas', target: '' };
+    default: return { verb: tool || 'Herramienta', target: '' };
+  }
+}
+
+/**
+ * Detalle desplegable de la herramienta: diff para ediciones, comando para Bash, JSON para el resto
+ */
+function toolDetailHtml(tool, input) {
+  const i = input || {};
+  if ((tool === 'Edit') && (i.old_string != null || i.new_string != null)) {
+    const del = String(i.old_string || '').split('\n').map(l => `<span class="diff-del">- ${escapeHtml(l)}</span>`).join('\n');
+    const add = String(i.new_string || '').split('\n').map(l => `<span class="diff-add">+ ${escapeHtml(l)}</span>`).join('\n');
+    return `<pre class="claude-tool-body">${del}\n${add}</pre>`;
+  }
+  if (tool === 'Write' && i.content != null) {
+    return `<pre class="claude-tool-body">${escapeHtml(String(i.content).slice(0, 1500))}</pre>`;
+  }
+  if (tool === 'Bash' && i.command) {
+    return `<pre class="claude-tool-body">$ ${escapeHtml(i.command)}</pre>`;
+  }
+  if (tool === 'TodoWrite' && Array.isArray(i.todos)) {
+    const mark = { completed: '✓', in_progress: '▸', pending: '○' };
+    return `<pre class="claude-tool-body">${i.todos.map(t => `${mark[t.status] || '○'} ${escapeHtml(t.content || '')}`).join('\n')}</pre>`;
+  }
+  const str = typeof input === 'object' ? JSON.stringify(input, null, 2) : String(input || '');
+  return str ? `<pre class="claude-tool-body">${escapeHtml(str.slice(0, 1500))}</pre>` : '';
+}
+
+function buildToolCard(t) {
+  const { verb, target } = describeTool(t.tool, t.input);
+  const card = document.createElement('details');
+  card.className = `claude-tool is-${t.status || 'running'}`;
+  card.innerHTML = `
+    <summary class="claude-tool-name">
+      <span class="tool-status"></span>
+      <span class="tool-verb">${escapeHtml(verb)}</span>
+      ${target ? `<code class="tool-target">${escapeHtml(target)}</code>` : ''}
+    </summary>
+    ${toolDetailHtml(t.tool, t.input)}
+  `;
+  return card;
+}
+
+function setToolCardStatus(card, status) {
+  card.classList.remove('is-running', 'is-done', 'is-error');
+  card.classList.add(`is-${status}`);
+}
+
 function startStreamingAssistant() {
   emptyState.style.display = 'none';
   currentAccumulatedText = '';
   currentAccumulatedThinking = '';
+  currentSegmentText = '';
+  currentToolCards.clear();
 
   const row = document.createElement('div');
   row.className = 'msg-row assistant';
@@ -759,6 +840,16 @@ function appendAssistantMsgStatic(msg) {
       <div class="text-body">${renderedContent}</div>
     </div>
   `;
+
+  if (Array.isArray(msg.tools) && msg.tools.length) {
+    const bubble = row.querySelector('.msg-bubble');
+    const textBody = row.querySelector('.text-body');
+    for (const t of msg.tools) {
+      if (t.subagent) continue;
+      // Una herramienta que quedó en 'running' en el historial ya no se está ejecutando
+      bubble.insertBefore(buildToolCard({ ...t, status: t.status === 'error' ? 'error' : 'done' }), textBody);
+    }
+  }
 
   messagesContainer.appendChild(row);
   appendCostFooter(row, msg.cost);
@@ -1273,6 +1364,14 @@ function sendPrompt(customPrompt, { skipPlanCheck = false } = {}) {
   }
 }
 
+// Marcar como terminadas las herramientas que no recibieron resultado (fin de tarea, error o cancelación)
+function finishToolCards(status = 'done') {
+  for (const card of currentToolCards.values()) {
+    if (card.classList.contains('is-running')) setToolCardStatus(card, status);
+  }
+  currentToolCards.clear();
+}
+
 function handleWsMessage(data) {
   switch (data.type) {
     case 'assistant_start':
@@ -1286,10 +1385,14 @@ function handleWsMessage(data) {
     case 'stream_raw':
       if (currentTextElement) {
         currentAccumulatedText += data.text;
+        currentSegmentText += data.text;
+        // Evitar párrafos vacíos al inicio de un bloque nuevo tras una herramienta
+        if (!currentSegmentText.trim()) break;
+        currentTextElement.style.display = '';
         if (window.marked) {
-          currentTextElement.innerHTML = marked.parse(currentAccumulatedText);
+          currentTextElement.innerHTML = marked.parse(currentSegmentText);
         } else {
-          currentTextElement.textContent = currentAccumulatedText;
+          currentTextElement.textContent = currentSegmentText;
         }
         scrollToBottom();
       }
@@ -1305,24 +1408,41 @@ function handleWsMessage(data) {
       break;
 
     case 'tool_use':
-      if (currentAssistantElement) {
+      if (currentAssistantElement && currentTextElement && !data.subagent) {
         const bubble = currentAssistantElement.querySelector('.msg-bubble');
-        const toolCard = document.createElement('div');
-        toolCard.className = 'claude-tool';
-        const inputStr = typeof data.input === 'object' ? JSON.stringify(data.input, null, 2) : String(data.input || '');
-        toolCard.innerHTML = `
-          <div class="claude-tool-name">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:-1px; margin-right:4px;">
-              <polyline points="4 17 10 11 4 5"></polyline>
-              <line x1="12" y1="19" x2="20" y2="19"></line>
-            </svg>Herramienta: ${escapeHtml(data.tool)}
-          </div>
-          ${inputStr ? `<pre class="claude-tool-body">${escapeHtml(inputStr.slice(0, 400))}</pre>` : ''}
-        `;
-        bubble.insertBefore(toolCard, currentTextElement);
+        const toolCard = buildToolCard({ tool: data.tool, input: data.input, status: 'running' });
+        if (data.id) currentToolCards.set(data.id, toolCard);
+
+        // Si el bloque de texto actual está vacío (o es el placeholder), la tarjeta ocupa su lugar
+        if (!currentSegmentText.trim()) {
+          bubble.insertBefore(toolCard, currentTextElement);
+          currentTextElement.innerHTML = '';
+          currentTextElement.style.display = 'none';
+        } else {
+          // Cerrar el bloque de texto y abrir uno nuevo debajo de la herramienta
+          bubble.appendChild(toolCard);
+          const nextText = document.createElement('div');
+          nextText.className = 'text-body';
+          nextText.style.display = 'none';
+          bubble.appendChild(nextText);
+          currentTextElement = nextText;
+          currentSegmentText = '';
+        }
         scrollToBottom();
       }
       break;
+
+    case 'tool_result': {
+      const card = currentToolCards.get(data.id);
+      if (card) {
+        setToolCardStatus(card, data.isError ? 'error' : 'done');
+        if (data.isError && data.content) {
+          card.insertAdjacentHTML('beforeend', `<pre class="claude-tool-body tool-error">${escapeHtml(data.content.slice(0, 600))}</pre>`);
+          card.open = true;
+        }
+      }
+      break;
+    }
 
     case 'plan_limits':
       if (!clientApiKey && data.limits) {
@@ -1332,8 +1452,10 @@ function handleWsMessage(data) {
       break;
 
     case 'task_completed':
-      if (data.message && data.message.text && (!currentAccumulatedText || currentAccumulatedText.includes('Pensando...'))) {
+      finishToolCards();
+      if (currentTextElement && data.message && data.message.text && !currentAccumulatedText.trim()) {
         currentAccumulatedText = data.message.text;
+        currentTextElement.style.display = '';
         if (window.marked) {
           currentTextElement.innerHTML = marked.parse(currentAccumulatedText);
         } else {
@@ -1347,7 +1469,9 @@ function handleWsMessage(data) {
       break;
 
     case 'task_error':
+      finishToolCards('error');
       if (currentTextElement) {
+        currentTextElement.style.display = '';
         currentTextElement.innerHTML += `<div style="color:var(--danger-red); margin-top:8px; display:flex; align-items:center; gap:6px;">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
             <circle cx="12" cy="12" r="10"></circle>
@@ -1363,7 +1487,9 @@ function handleWsMessage(data) {
       break;
 
     case 'task_canceled':
+      finishToolCards('error');
       if (currentTextElement) {
+        currentTextElement.style.display = '';
         currentTextElement.innerHTML += `<div style="color:var(--text-subtle); margin-top:8px; display:flex; align-items:center; gap:6px;">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
             <circle cx="12" cy="12" r="10"></circle>

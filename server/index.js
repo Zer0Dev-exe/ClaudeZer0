@@ -423,14 +423,31 @@ wss.on('connection', (ws) => {
                 broadcast({ type: 'stream_raw', sessionId: currentSession.id, text: event.text });
               } else if (event.type === 'tool_use') {
                 assistantMsg.tools.push({
+                  id: event.id,
                   tool: event.tool,
                   input: event.input,
+                  subagent: !!event.subagent,
                   status: 'running',
                   time: Date.now()
                 });
-                broadcast({ type: 'tool_use', sessionId: currentSession.id, tool: event.tool, input: event.input });
+                broadcast({
+                  type: 'tool_use',
+                  sessionId: currentSession.id,
+                  id: event.id,
+                  tool: event.tool,
+                  input: event.input,
+                  subagent: !!event.subagent
+                });
               } else if (event.type === 'tool_result') {
-                broadcast({ type: 'tool_result', sessionId: currentSession.id, result: event.toolResult });
+                const toolEntry = assistantMsg.tools.find(t => t.id === event.id);
+                if (toolEntry) toolEntry.status = event.isError ? 'error' : 'done';
+                broadcast({
+                  type: 'tool_result',
+                  sessionId: currentSession.id,
+                  id: event.id,
+                  isError: event.isError,
+                  content: event.content
+                });
               }
             },
             onDone: (result) => {
@@ -438,7 +455,8 @@ wss.on('connection', (ws) => {
               if (!assistantMsg.text && result.text) {
                 assistantMsg.text = result.text;
               }
-              if (result.result && result.result.result) {
+              // El resultado final solo contiene el último bloque de texto: usarlo solo si no se recibió nada en streaming
+              if (!assistantMsg.text && result.result && result.result.result) {
                 assistantMsg.text = typeof result.result.result === 'string'
                   ? result.result.result
                   : JSON.stringify(result.result.result, null, 2);
