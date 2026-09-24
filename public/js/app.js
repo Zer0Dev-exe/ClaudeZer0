@@ -2565,6 +2565,7 @@ async function openUsageModal() {
     delete resetBtn.dataset.confirm;
   }
   modal.style.display = 'flex';
+  loadPlanLimits();
   try {
     const res = await authFetch('/api/usage');
     const data = await res.json();
@@ -2630,6 +2631,131 @@ function renderUsage(usage, pricing) {
     </div>
     <p class="usage-note">${note}</p>
   `;
+}
+
+// --- Límites del plan (suscripción) ------------------------------------------
+let planLimitsData = null;
+let planLimitsLoading = false;
+
+async function loadPlanLimits(force = false) {
+  if (planLimitsLoading) return;
+  planLimitsLoading = true;
+  document.querySelector('#plan-limits .plan-refresh')?.classList.add('is-loading');
+  try {
+    const res = await authFetch(`/api/usage/plan${force ? '?refresh=1' : ''}`);
+    planLimitsData = await res.json();
+  } catch (err) {
+    planLimitsData = { success: false, message: 'No se pudieron consultar los límites del plan' };
+  } finally {
+    planLimitsLoading = false;
+  }
+  renderPlanLimits();
+  renderPlanMini();
+}
+
+function formatPlanReset(iso) {
+  if (!iso) return '';
+  const date = new Date(iso);
+  const diffMin = Math.round((date - Date.now()) / 60000);
+  if (diffMin <= 0) return 'Se restablece en breve';
+  if (diffMin < 24 * 60) {
+    const h = Math.floor(diffMin / 60);
+    const m = diffMin % 60;
+    return `Se restablece en ${h ? `${h} h ` : ''}${m} min`;
+  }
+  const day = date.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', '');
+  const time = date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  return `Se restablece el ${day}, ${time}`;
+}
+
+function planMeterHtml(percent) {
+  const level = percent >= 90 ? ' is-full' : percent >= 70 ? ' is-warn' : '';
+  return `<span class="plan-meter${level}"><span style="width:${Math.round(percent)}%"></span></span>`;
+}
+
+function planRowHtml(label, win) {
+  return `
+    <div class="plan-row">
+      <div class="plan-row-label">${escapeHtml(label)}<span class="plan-row-reset">${escapeHtml(formatPlanReset(win.resetsAt))}</span></div>
+      ${planMeterHtml(win.percent)}
+      <span class="plan-row-value">${Math.round(win.percent)}% usado</span>
+    </div>`;
+}
+
+function renderPlanLimits() {
+  const box = document.getElementById('plan-limits');
+  if (!box) return;
+  const data = planLimitsData;
+  if (!data || data.notApplicable) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+
+  const head = `
+    <div class="plan-limits-head">
+      <span class="plan-limits-title">Límites de uso del plan</span>
+      <span class="plan-limits-plan">${escapeHtml(planLabel())}</span>
+    </div>`;
+
+  if (!data.success) {
+    box.innerHTML = `${head}<p class="plan-limits-error">${escapeHtml(data.message || 'No disponible')}</p>${planFootHtml(null)}`;
+    return;
+  }
+
+  const rows = [];
+  if (data.session) rows.push(planRowHtml('Sesión actual', data.session));
+  if (data.weekly || data.weeklyByModel.length) {
+    rows.push('<div class="plan-limits-sub">Límites semanales</div>');
+    if (data.weekly) rows.push(planRowHtml('Todos los modelos', data.weekly));
+    data.weeklyByModel.forEach(w => rows.push(planRowHtml(`Solo ${w.name}`, w)));
+  }
+
+  const breakdown = (data.breakdown || []).filter(b => b.percent > 0);
+  if (breakdown.length) {
+    rows.push(`<p class="plan-limits-error">Esta semana: ${breakdown.map(b => `${escapeHtml(b.name)} ${b.percent}%`).join(' · ')}</p>`);
+  }
+
+  const extra = data.extraUsage;
+  if (extra && typeof extra.used === 'number') {
+    const fmt = v => new Intl.NumberFormat('es-ES', { style: 'currency', currency: extra.currency }).format(v);
+    rows.push('<div class="plan-limits-sub">Créditos de uso</div>');
+    rows.push(`
+      <div class="plan-row">
+        <div class="plan-row-label">${fmt(extra.used)} gastados<span class="plan-row-reset">${extra.enabled ? 'Activados' : 'Desactivados'}${extra.limit ? ` · límite mensual ${fmt(extra.limit)}` : ''}</span></div>
+      </div>`);
+  }
+
+  box.innerHTML = head + rows.join('') + planFootHtml(data.fetchedAt);
+}
+
+function planFootHtml(fetchedAt) {
+  const when = fetchedAt
+    ? (Date.now() - fetchedAt < 60000 ? 'ahora mismo' : new Date(fetchedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }))
+    : '—';
+  return `
+    <div class="plan-limits-foot">
+      <span>Última actualización: ${when}</span>
+      <button type="button" class="plan-refresh" title="Actualizar" aria-label="Actualizar"><svg><use href="#i-refresh"/></svg></button>
+    </div>`;
+}
+
+function renderPlanMini() {
+  const mini = document.getElementById('user-plan-limits');
+  if (!mini) return;
+  const data = planLimitsData;
+  if (!data || !data.success || (!data.session && !data.weekly)) {
+    mini.hidden = true;
+    return;
+  }
+  const row = (label, win) => `
+    <span class="plan-mini-row">
+      <span>${label}</span>
+      <span class="plan-row-value">${Math.round(win.percent)}%</span>
+      ${planMeterHtml(win.percent)}
+    </span>`;
+  mini.innerHTML = (data.session ? row('Sesión actual', data.session) : '') + (data.weekly ? row('Semana', data.weekly) : '');
+  mini.hidden = false;
 }
 
 async function handleResetUsage() {
@@ -2743,7 +2869,11 @@ function setupShell() {
     });
   });
 
-  bindDropdown('dropdown-user', 'btn-sidebar-user-pill');
+  bindDropdown('dropdown-user', 'btn-sidebar-user-pill', () => loadPlanLimits());
+  document.getElementById('user-plan-limits')?.addEventListener('click', openUsageModal);
+  document.getElementById('plan-limits')?.addEventListener('click', (e) => {
+    if (e.target.closest('.plan-refresh')) loadPlanLimits(true);
+  });
   document.getElementById('btn-user-personalize')?.addEventListener('click', openPersonalizeModal);
   document.getElementById('btn-user-key')?.addEventListener('click', openKeyModal);
   document.getElementById('btn-user-usage')?.addEventListener('click', openUsageModal);

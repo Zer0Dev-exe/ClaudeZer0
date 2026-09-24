@@ -88,3 +88,63 @@ export function resetUsage() {
   saveUsage();
   return getUsage();
 }
+
+// --------------------------------------------------------------------------
+// Límites de uso de la suscripción (Pro/Max), los mismos que muestra claude.ai
+// --------------------------------------------------------------------------
+const PLAN_LIMITS_URL = 'https://api.anthropic.com/api/oauth/usage';
+const PLAN_LIMITS_CACHE_MS = 60 * 1000;
+let planLimitsCache = null;
+
+function normalizeWindow(w) {
+  if (!w || typeof w.utilization !== 'number') return null;
+  return { percent: Math.max(0, Math.min(100, w.utilization)), resetsAt: w.resets_at || null };
+}
+
+/**
+ * Consultar el porcentaje gastado de la sesión actual (5 h) y de los límites semanales
+ * con el token OAuth de la suscripción. `force` ignora la caché.
+ */
+export async function getPlanLimits(oauthToken, { force = false } = {}) {
+  if (!oauthToken) {
+    return { success: false, message: 'No hay una suscripción de Claude vinculada en el anfitrión (pnpm auth:login).' };
+  }
+  if (!force && planLimitsCache && Date.now() - planLimitsCache.fetchedAt < PLAN_LIMITS_CACHE_MS) {
+    return planLimitsCache;
+  }
+
+  try {
+    const res = await fetch(PLAN_LIMITS_URL, {
+      headers: { authorization: `Bearer ${oauthToken}`, 'anthropic-beta': 'oauth-2025-04-20' },
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!res.ok) throw new Error(`Error HTTP ${res.status} al consultar los límites del plan`);
+    const data = await res.json();
+
+    const weeklyByModel = [
+      ['Opus', data.seven_day_opus],
+      ['Sonnet', data.seven_day_sonnet]
+    ].map(([name, w]) => ({ name, ...normalizeWindow(w) })).filter(w => typeof w.percent === 'number');
+
+    const extra = data.extra_usage;
+    const decimals = extra?.decimal_places ?? 2;
+
+    planLimitsCache = {
+      success: true,
+      fetchedAt: Date.now(),
+      session: normalizeWindow(data.five_hour),
+      weekly: normalizeWindow(data.seven_day),
+      weeklyByModel,
+      breakdown: (data.seven_day_breakdown?.rows || []).map(r => ({ name: r.display_name || r.key, percent: r.percent })),
+      extraUsage: extra ? {
+        enabled: !!extra.is_enabled,
+        used: typeof extra.used_credits === 'number' ? extra.used_credits / 10 ** decimals : null,
+        limit: typeof extra.monthly_limit === 'number' ? extra.monthly_limit / 10 ** decimals : null,
+        currency: extra.currency || 'USD'
+      } : null
+    };
+    return planLimitsCache;
+  } catch (err) {
+    return { success: false, message: err.message || 'No se pudieron consultar los límites del plan' };
+  }
+}

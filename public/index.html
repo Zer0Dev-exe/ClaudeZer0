@@ -185,6 +185,7 @@
 
           <div class="dropdown-menu user-menu" id="menu-user" role="menu">
             <div class="user-menu-email" id="user-menu-email"></div>
+            <button type="button" class="plan-mini" id="user-plan-limits" title="Ver uso del plan" hidden></button>
             <button type="button" class="menu-row" id="btn-user-personalize">
               <svg><use href="#i-sliders"/></svg><span>Personalizar</span>
             </button>
@@ -720,8 +721,11 @@
         <button class="modal-close" id="btn-close-usage" aria-label="Cerrar">&times;</button>
       </div>
 
-      <div class="modal-body" id="usage-body">
-        <div class="usage-empty">Cargando…</div>
+      <div class="modal-body">
+        <section class="plan-limits" id="plan-limits" hidden></section>
+        <div class="usage-body" id="usage-body">
+          <div class="usage-empty">Cargando…</div>
+        </div>
       </div>
 
       <div class="modal-bottom">

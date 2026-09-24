@@ -36,7 +36,7 @@ import {
 } from './modelsManager.js';
 
 import { refreshPricing, getPricingInfo } from './pricingManager.js';
-import { summarizeResultCost, recordUsage, getUsage, resetUsage } from './usageManager.js';
+import { summarizeResultCost, recordUsage, getUsage, resetUsage, getPlanLimits } from './usageManager.js';
 
 import {
   login,
@@ -189,6 +189,15 @@ app.post('/api/models/sync', requireAuth, async (req, res) => {
 // Gasto acumulado por modelo
 app.get('/api/usage', requireAuth, (req, res) => {
   res.json({ success: true, usage: getUsage(), pricing: getPricingInfo() });
+});
+
+// Porcentaje gastado de los límites de la suscripción del anfitrión (sesión y semana)
+app.get('/api/usage/plan', requireAuth, async (req, res) => {
+  const clientKey = req.headers['x-claude-api-key'] || null;
+  if (getAppMode() === 'Client' || clientKey) {
+    return res.json({ success: false, notApplicable: true, message: 'Estás usando una clave de API: no hay límites de suscripción.' });
+  }
+  res.json(await getPlanLimits(getHostOAuthToken(), { force: req.query.refresh === '1' }));
 });
 
 app.post('/api/usage/reset', requireAuth, (req, res) => {
