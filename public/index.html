@@ -1,18 +1,37 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="light" data-accent="terracotta" data-chat-font="serif">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>ClaudeZer0</title>
   <meta name="description" content="Interfaz cálida y elegante para Claude Code">
-  <meta name="theme-color" content="#1b1a17">
+  <meta name="theme-color" content="#faf9f5">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="apple-touch-icon" href="icon.svg">
   <link rel="manifest" href="manifest.json">
 
-  <!-- Fonts: Newsreader (Serif de Claude) e Inter -->
+  <!-- Tema, acento y fuente guardados: se aplican antes de pintar para evitar parpadeos -->
+  <script>
+    (function () {
+      var root = document.documentElement;
+      try {
+        var theme = localStorage.getItem('claudezer0_theme') || 'light';
+        if (theme === 'system') {
+          theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        root.dataset.theme = theme;
+        root.dataset.accent = localStorage.getItem('claudezer0_accent') || 'terracotta';
+        root.dataset.chatFont = localStorage.getItem('claudezer0_chat_font') || 'serif';
+        if (localStorage.getItem('claudezer0_sidebar_collapsed') === '1') root.classList.add('sidebar-collapsed');
+      } catch (e) {
+        root.dataset.theme = 'light';
+      }
+    })();
+  </script>
+
+  <!-- Fonts: Newsreader (serif), Inter (interfaz) y JetBrains Mono (código) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -24,15 +43,40 @@
 </head>
 <body>
 
+  <!-- Iconos reutilizables -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+    <symbol id="i-spark" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M12 2.6v6.2M12 15.2v6.2M2.6 12h6.2M15.2 12h6.2M5.4 5.4l4.3 4.3M14.3 14.3l4.3 4.3M5.4 18.6l4.3-4.3M14.3 9.7l4.3-4.3"/><path d="M8.1 3.3l1.6 3.9M14.3 16.8l1.6 3.9M3.3 15.9l3.9-1.6M16.8 9.7l3.9-1.6M15.9 3.3l-1.6 3.9M9.7 16.8l-1.6 3.9M3.3 8.1l3.9 1.6M16.8 14.3l3.9 1.6" stroke-width="1.5"/></g></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9.5 4v16"/></g></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></g></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.4l2 2.2h7.6A2.5 2.5 0 0 1 21 9.7v7.8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/><path d="M3 10h18"/></g></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></g></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M16 7l2.5 2.5M14 9l2 2"/></g></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 20v-4h-4"/></g></symbol>
+    <symbol id="i-ghost" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a7 7 0 0 0-7 7v10.5l2.3-1.8 2.3 1.8 2.4-1.8 2.4 1.8 2.3-1.8 2.3 1.8V10a7 7 0 0 0-7-7z"/><path d="M9.5 10.5h.01M14.5 10.5h.01" stroke-width="2.4"/></g></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3"/><path d="m16 16 4-4-4-4M20 12H9"/></g></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></g></symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-slash" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m13.5 8-3 8"/></g></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></g></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></g></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9.5 7V5.2A1.2 1.2 0 0 1 10.7 4h2.6a1.2 1.2 0 0 1 1.2 1.2V7"/><path d="M6 7l.9 11.4A1.8 1.8 0 0 0 8.7 20h6.6a1.8 1.8 0 0 0 1.8-1.6L18 7"/><path d="M10.2 11v5M13.8 11v5"/></g></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4.5 17a8.5 8.5 0 1 1 15 0"/><path d="m12 13 3.5-4"/></g></symbol>
+    <symbol id="i-feather" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 4c-7 0-13 4.5-13 13v3"/><path d="M7 14h6.5M9.5 10H16"/><path d="M20 4c0 7-3.5 11-10 11"/></g></symbol>
+  </svg>
+
   <!-- ====================================================================
        PANTALLA DE LOGIN (.env)
        ==================================================================== -->
   <div class="login-container" id="login-screen">
-    <div class="login-card">
+    <div class="login-card" id="login-card">
       <div class="claude-star-logo">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2L13.7 8.3L20 7L15.8 12L20 17L13.7 15.7L12 22L10.3 15.7L4 17L8.2 12L4 7L10.3 8.3L12 2Z"/>
-        </svg>
+        <svg><use href="#i-spark"/></svg>
       </div>
       <h1 class="login-title">ClaudeZer0</h1>
       <p class="login-desc">Introduce las credenciales configuradas en tu archivo <code>.env</code> para acceder desde este dispositivo.</p>
@@ -58,369 +102,379 @@
         Configurable en <code>.env</code> (CLAUDEZER0_USER y CLAUDEZER0_PASSWORD)
       </div>
     </div>
+
+    <!-- Cambio obligatorio de la contraseña por defecto -->
+    <div class="login-card" id="force-password-card" hidden>
+      <div class="claude-star-logo">
+        <svg><use href="#i-key"/></svg>
+      </div>
+      <h1 class="login-title">Cambia la contraseña</h1>
+      <p class="login-desc">Estás usando la contraseña por defecto. Cualquiera en tu red podría entrar y ejecutar Claude en este PC, así que elige una nueva antes de continuar.</p>
+
+      <form id="force-password-form" autocomplete="on">
+        <input type="text" autocomplete="username" id="force-password-user" hidden>
+        <div class="input-group">
+          <label for="force-password-new">Nueva contraseña</label>
+          <input type="password" id="force-password-new" placeholder="Mínimo 8 caracteres" required minlength="8" autocomplete="new-password">
+        </div>
+        <div class="input-group">
+          <label for="force-password-confirm">Repite la contraseña</label>
+          <input type="password" id="force-password-confirm" required minlength="8" autocomplete="new-password">
+        </div>
+        <div class="login-error" id="force-password-error" style="display: none;"></div>
+        <button type="submit" class="btn-login">Guardar y entrar</button>
+      </form>
+    </div>
   </div>
 
   <!-- ====================================================================
-       APLICACIÓN PRINCIPAL (CLAUDE.AI STYLE)
+       APLICACIÓN PRINCIPAL
        ==================================================================== -->
   <div class="app-layout" id="main-app" style="display: none;">
-    <!-- Sidebar Overlay for Mobile -->
+    <!-- Fondo oscuro para la barra lateral en móvil -->
     <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
-    <!-- Left Sidebar: Conversations & Navigation -->
+    <!-- Barra lateral -->
     <aside class="sidebar" id="sidebar">
-      <div class="sidebar-top">
-        <div class="sidebar-brand">
-          <div class="claude-icon-small">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2L13.7 8.3L20 7L15.8 12L20 17L13.7 15.7L12 22L10.3 15.7L4 17L8.2 12L4 7L10.3 8.3L12 2Z"/>
-            </svg>
-          </div>
-          <span class="brand-text">ClaudeZer0</span>
-        </div>
-
-        <button class="btn-new-chat" id="btn-new-chat">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-          <span>Nuevo chat</span>
+      <div class="sidebar-head">
+        <button type="button" class="icon-btn" id="btn-collapse-sidebar" title="Cerrar barra lateral" aria-label="Cerrar barra lateral">
+          <svg><use href="#i-panel"/></svg>
         </button>
+        <span class="brand-text">ClaudeZer0</span>
       </div>
 
-      <!-- Active Project Selector in Sidebar -->
-      <div class="sidebar-workspace">
-        <div class="ws-header-row">
-          <span class="sidebar-section-title">CARPETA ACTIVA</span>
-          <button class="btn-edit-ws" id="btn-change-ws" title="Cambiar carpeta">Cambiar</button>
-        </div>
-        <div class="ws-current-box" id="sidebar-ws-name" title="Carpeta activa">
-          C:\Users...
-        </div>
-      </div>
+      <label class="sidebar-search" for="sidebar-search-input">
+        <svg><use href="#i-search"/></svg>
+        <input type="search" id="sidebar-search-input" placeholder="Buscar" autocomplete="off" spellcheck="false">
+        <kbd>Ctrl K</kbd>
+      </label>
 
-      <!-- Sessions History List -->
+      <nav class="sidebar-nav">
+        <button type="button" class="nav-item nav-item-new" id="btn-new-chat">
+          <span class="nav-icon nav-icon-new"><svg><use href="#i-plus"/></svg></span>
+          <span>Nuevo</span>
+        </button>
+        <button type="button" class="nav-item" id="btn-change-ws" title="Elegir la carpeta del proyecto">
+          <span class="nav-icon"><svg><use href="#i-folder"/></svg></span>
+          <span>Proyectos</span>
+          <span class="nav-meta" id="sidebar-ws-name"></span>
+        </button>
+        <button type="button" class="nav-item" id="btn-nav-personalize">
+          <span class="nav-icon"><svg><use href="#i-sliders"/></svg></span>
+          <span>Personalizar</span>
+        </button>
+        <button type="button" class="nav-item nav-item-more" id="btn-nav-more" aria-expanded="false">
+          <span class="nav-icon"><svg><use href="#i-chevron-down"/></svg></span>
+          <span>Más</span>
+        </button>
+        <div class="nav-more-list" id="nav-more-list" hidden>
+          <button type="button" class="nav-item" id="btn-sidebar-key">
+            <span class="nav-icon"><svg><use href="#i-key"/></svg></span>
+            <span>Clave y modo</span>
+          </button>
+          <button type="button" class="nav-item" id="btn-nav-usage">
+            <span class="nav-icon"><svg><use href="#i-gauge"/></svg></span>
+            <span>Uso y gasto</span>
+          </button>
+          <button type="button" class="nav-item" id="btn-nav-sync">
+            <span class="nav-icon"><svg><use href="#i-refresh"/></svg></span>
+            <span>Sincronizar modelos</span>
+          </button>
+          <button type="button" class="nav-item" id="btn-nav-add-model">
+            <span class="nav-icon"><svg><use href="#i-plus"/></svg></span>
+            <span>Añadir modelo</span>
+          </button>
+        </div>
+      </nav>
+
       <div class="sidebar-history">
-        <div class="sidebar-section-title">RECIENTES</div>
+        <div class="sidebar-section-title">Recientes</div>
         <div class="sessions-list" id="sessions-list">
           <div class="sessions-loading">Cargando conversaciones...</div>
         </div>
       </div>
 
-      <!-- User Profile & Logout -->
       <div class="sidebar-bottom">
-        <div class="user-pill" id="btn-sidebar-user-pill" title="Configuración de Claude / Modo">
-          <div class="user-avatar" id="user-avatar-letter">A</div>
-          <div class="user-details">
-            <div class="user-name" id="user-display-name">admin</div>
-            <div class="user-plan" id="user-plan-label">Claude Pro</div>
+        <div class="custom-dropdown user-dropdown" id="dropdown-user">
+          <button type="button" class="user-pill" id="btn-sidebar-user-pill" aria-haspopup="menu" aria-expanded="false">
+            <span class="user-avatar" id="user-avatar-letter">A</span>
+            <span class="user-details">
+              <span class="user-name" id="user-display-name">admin</span>
+              <span class="user-plan-sep">·</span>
+              <span class="user-plan" id="user-plan-label">Pro</span>
+            </span>
+            <svg class="chevron-icon"><use href="#i-chevron-down"/></svg>
+          </button>
+
+          <div class="dropdown-menu user-menu" id="menu-user" role="menu">
+            <div class="user-menu-email" id="user-menu-email"></div>
+            <button type="button" class="plan-mini" id="user-plan-limits" title="Ver uso del plan" hidden></button>
+            <button type="button" class="menu-row" id="btn-user-personalize">
+              <svg><use href="#i-sliders"/></svg><span>Personalizar</span>
+            </button>
+            <button type="button" class="menu-row" id="btn-user-key">
+              <svg><use href="#i-key"/></svg><span>Clave y modo</span>
+            </button>
+            <button type="button" class="menu-row" id="btn-user-usage">
+              <svg><use href="#i-gauge"/></svg><span>Uso y gasto</span>
+            </button>
+            <button type="button" class="menu-row" id="btn-user-security">
+              <svg><use href="#i-key"/></svg><span>Seguridad</span>
+            </button>
+            <div class="menu-row menu-row-static">
+              <span>Tema</span>
+              <div class="theme-switch" role="group" aria-label="Tema">
+                <button type="button" data-theme-choice="light" title="Claro"><svg><use href="#i-sun"/></svg></button>
+                <button type="button" data-theme-choice="dark" title="Oscuro"><svg><use href="#i-moon"/></svg></button>
+                <button type="button" data-theme-choice="system" title="Sistema"><svg><use href="#i-monitor"/></svg></button>
+              </div>
+            </div>
+            <div class="dropdown-divider"></div>
+            <button type="button" class="menu-row menu-row-danger" id="btn-logout">
+              <svg><use href="#i-logout"/></svg><span>Cerrar sesión</span>
+            </button>
           </div>
         </div>
-        <button class="btn-settings-key" id="btn-sidebar-key" title="Configurar Claude Key">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="7.5" cy="15.5" r="4.5"></circle>
-            <path d="M21 3l-9.8 9.8"></path>
-            <path d="M15 9l3 3"></path>
-          </svg>
-        </button>
-        <button class="btn-logout" id="btn-logout" title="Cerrar sesión">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-            <polyline points="16 17 21 12 16 7"></polyline>
-            <line x1="21" y1="12" x2="9" y2="12"></line>
-          </svg>
-        </button>
       </div>
     </aside>
 
-    <!-- Main Chat Workspace -->
-    <div class="main-content">
-      <!-- Mobile & Desktop Top Navigation -->
+    <!-- Zona principal -->
+    <div class="main-content" id="main-content">
       <header class="top-nav">
-        <button class="btn-hamburger" id="btn-hamburger" aria-label="Abrir menú">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="3" y1="12" x2="21" y2="12"></line>
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <line x1="3" y1="18" x2="21" y2="18"></line>
-          </svg>
-        </button>
-
-        <div class="top-chat-title" id="top-chat-title">
-          Nueva conversación
+        <div class="top-left">
+          <button type="button" class="icon-btn" id="btn-hamburger" title="Abrir barra lateral" aria-label="Abrir barra lateral">
+            <svg><use href="#i-panel"/></svg>
+          </button>
+          <div class="top-chat-title" id="top-chat-title"></div>
         </div>
 
         <div class="top-actions">
-          <!-- Mode & Key Indicator Button -->
+          <!-- Solo visible cuando falta configurar la cuenta o la clave -->
           <button type="button" class="mode-pill-btn" id="btn-mode-indicator" title="Ver modo y configurar tu clave de Claude">
             <span class="mode-pill-dot" id="mode-pill-dot"></span>
             <span class="mode-pill-text" id="mode-pill-text">Modo Hoster</span>
           </button>
-
-          <!-- AI Model Selector Dropdown -->
-          <div class="custom-dropdown" id="dropdown-model">
-            <button type="button" class="model-selector-btn" id="btn-model-trigger" aria-haspopup="listbox" aria-expanded="false" title="Seleccionar modelo de Claude">
-              <span class="model-badge-icon">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2L13.7 8.3L20 7L15.8 12L20 17L13.7 15.7L12 22L10.3 15.7L4 17L8.2 12L4 7L10.3 8.3L12 2Z"/>
-                </svg>
-              </span>
-              <span class="model-name-text" id="current-model-name">Claude 3.7 Sonnet</span>
-              <span class="model-badge-tag" id="current-model-tag">Híbrido</span>
-              <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-            </button>
-
-            <div class="dropdown-menu dropdown-menu-down model-menu" id="menu-model-options" role="listbox">
-              <div class="dropdown-section-header">MODELO DE IA</div>
-
-              <div id="dynamic-model-list">
-                <!-- Se pobla dinámicamente desde el backend -->
-              </div>
-
-              <div class="dropdown-divider"></div>
-              <button type="button" class="dropdown-action-btn" id="btn-open-add-model" title="Añadir cualquier modelo nuevo">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
-                <span>Añadir modelo personalizado...</span>
-              </button>
-              <button type="button" class="dropdown-action-btn" id="btn-sync-models" title="Buscar nuevos modelos en la API de Anthropic">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
-                </svg>
-                <span>Sincronizar con Anthropic</span>
-              </button>
-            </div>
-          </div>
-
-          <button class="icon-nav-btn" id="btn-open-workspace" title="Seleccionar carpeta activa">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-            </svg>
+          <button type="button" class="icon-btn icon-btn-lg" id="btn-incognito" title="Chat incógnito" aria-label="Chat incógnito" aria-pressed="false">
+            <svg><use href="#i-ghost"/></svg>
           </button>
+          <button type="button" id="btn-open-workspace" hidden></button>
         </div>
       </header>
 
-      <!-- Chat Messages Container (Centered) -->
       <main class="chat-viewport" id="chat-viewport">
-        <!-- Empty State / Welcome Screen -->
         <div class="empty-state" id="empty-state">
-          <div class="empty-logo">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2L13.7 8.3L20 7L15.8 12L20 17L13.7 15.7L12 22L10.3 15.7L4 17L8.2 12L4 7L10.3 8.3L12 2Z"/>
-            </svg>
-          </div>
-          <h2 class="empty-greeting" id="greeting-text">¿En qué puedo ayudarte hoy?</h2>
-          <p class="empty-subtext">Tu agente de Claude Code está listo con tu suscripción Pro en tu ordenador.</p>
-
-          <div class="starter-cards">
-            <button class="starter-card" data-prompt="Revisa la estructura de este proyecto y explícame sus componentes clave.">
-              <span class="starter-icon icon-folder">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                  <line x1="12" y1="11" x2="12" y2="17"></line>
-                  <line x1="9" y1="14" x2="15" y2="14"></line>
-                </svg>
-              </span>
-              <span class="starter-text">Explorar estructura del proyecto</span>
-            </button>
-            <button class="starter-card" data-prompt="Analiza el código en busca de posibles errores, bugs o mejoras de rendimiento.">
-              <span class="starter-icon icon-bug">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="11" cy="11" r="8"></circle>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                  <path d="m9 9 4 4"></path>
-                  <path d="m13 9-4 4"></path>
-                </svg>
-              </span>
-              <span class="starter-text">Buscar bugs o posibles fallos</span>
-            </button>
-            <button class="starter-card" data-prompt="Ejecuta git status y git diff para mostrarme los cambios pendientes.">
-              <span class="starter-icon icon-git">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="6" y1="3" x2="6" y2="15"></line>
-                  <circle cx="18" cy="6" r="3"></circle>
-                  <circle cx="6" cy="18" r="3"></circle>
-                  <path d="M18 9a9 9 0 0 1-9 9"></path>
-                </svg>
-              </span>
-              <span class="starter-text">Consultar estado de Git</span>
-            </button>
-            <button class="starter-card" data-prompt="Crea un archivo README.md con la documentación inicial.">
-              <span class="starter-icon icon-doc">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                  <polyline points="14 2 14 8 20 8"></polyline>
-                  <line x1="16" y1="13" x2="8" y2="13"></line>
-                  <line x1="16" y1="17" x2="8" y2="17"></line>
-                  <line x1="10" y1="9" x2="8" y2="9"></line>
-                </svg>
-              </span>
-              <span class="starter-text">Generar documentación</span>
-            </button>
-          </div>
+          <h1 class="empty-greeting">
+            <span class="greeting-mark"><svg><use href="#i-spark"/></svg></span>
+            <span class="greeting-mark greeting-mark-incognito"><svg><use href="#i-ghost"/></svg></span>
+            <span id="greeting-text">¿En qué estamos pensando?</span>
+          </h1>
+          <p class="empty-subtext"></p>
+          <p class="incognito-note">Esta conversación no aparecerá en Recientes y se borrará al salir del modo incógnito.</p>
         </div>
 
-        <!-- Messages List -->
         <div class="messages-container" id="messages-container"></div>
       </main>
 
-      <!-- Floating Input Area (Claude.ai Style) -->
       <footer class="input-area">
-        <div class="input-card">
-          <!-- Slash Commands Autocomplete Popover -->
-          <div class="slash-popup" id="slash-popup" role="listbox" aria-label="Comandos de Claude" style="display: none;">
-            <div class="slash-popup-header">COMANDOS DISPONIBLES (CLAUDE CODE)</div>
-            <div class="slash-popup-list" id="slash-popup-list"></div>
-          </div>
+        <div class="composer">
+          <div class="plan-alert" id="plan-alert" role="alert" hidden></div>
+          <div class="input-card">
+            <div class="slash-popup" id="slash-popup" role="listbox" aria-label="Comandos de Claude" style="display: none;">
+              <div class="slash-popup-header">Comandos disponibles</div>
+              <div class="slash-popup-list" id="slash-popup-list"></div>
+            </div>
 
-          <!-- Attachments Preview (temporal, no se guarda) -->
-          <div class="attach-preview" id="attach-preview" hidden></div>
+            <!-- Adjuntos (temporales, no se guardan) -->
+            <div class="attach-preview" id="attach-preview" hidden></div>
 
-          <!-- Textarea -->
-          <textarea
-            id="prompt-input"
-            placeholder="Envía un mensaje o escribe / para comandos..."
-            rows="1"
-            aria-label="Mensaje para Claude"
-          ></textarea>
+            <textarea
+              id="prompt-input"
+              placeholder="¿En qué puedo ayudarte hoy?"
+              rows="1"
+              aria-label="Mensaje para Claude"
+            ></textarea>
 
-          <!-- Input Footer with Controls -->
-          <div class="input-card-footer">
-            <div class="input-meta-left">
-              <!-- Beautiful Active Folder Pill -->
-              <button type="button" class="pill-btn ws-pill-btn" id="input-ws-pill" title="Carpeta activa (clic para cambiar)">
-                <svg class="ws-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                </svg>
-                <span class="ws-name-text" id="input-ws-name">Documents</span>
-              </button>
-
-              <!-- Beautiful Custom Mode Dropdown -->
-              <div class="custom-dropdown" id="dropdown-mode">
-                <button type="button" class="pill-btn mode-trigger-btn" id="btn-mode-trigger" aria-haspopup="listbox" aria-expanded="false" title="Modo de ejecución de Claude">
-                  <span class="mode-icon-current" id="current-mode-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path>
-                      <path d="m15 5 4 4"></path>
-                    </svg>
-                  </span>
-                  <span class="mode-label-text" id="current-mode-label">Autónomo</span>
-                  <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-
-                <div class="dropdown-menu dropdown-menu-up mode-menu" id="menu-mode-options" role="listbox">
-                  <div class="dropdown-section-header">MODO DE EJECUCIÓN</div>
-
-                  <div class="dropdown-item mode-option" data-value="acceptEdits" data-label="Aceptar ediciones" role="option" aria-selected="false">
-                    <div class="item-icon-circle mode-edit-color">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path>
-                        <path d="m15 5 4 4"></path>
-                      </svg>
-                    </div>
-                    <div class="item-content">
-                      <div class="item-title-row">
-                        <span class="item-title">Aceptar ediciones</span>
-                        <span class="badge-rec">Defecto</span>
-                      </div>
-                      <div class="item-desc">Acepta automáticamente cambios y ediciones en archivos de tu proyecto</div>
-                    </div>
-                    <svg class="item-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                  </div>
-
-                  <div class="dropdown-item mode-option selected" data-value="auto" data-label="Autónomo" role="option" aria-selected="true">
-                    <div class="item-icon-circle mode-auto-color">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-                      </svg>
-                    </div>
-                    <div class="item-content">
-                      <div class="item-title-row">
-                        <span class="item-title">Autónomo</span>
-                      </div>
-                      <div class="item-desc">Ejecución continua de tareas y comandos sin pedir confirmaciones</div>
-                    </div>
-                    <svg class="item-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                  </div>
-
-                  <div class="dropdown-item mode-option" data-value="manual" data-label="Manual" role="option" aria-selected="false">
-                    <div class="item-icon-circle mode-manual-color">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-                      </svg>
-                    </div>
-                    <div class="item-content">
-                      <div class="item-title-row">
-                        <span class="item-title">Manual</span>
-                      </div>
-                      <div class="item-desc">Solicita tu confirmación paso a paso antes de cada acción o comando</div>
-                    </div>
-                    <svg class="item-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                  </div>
-
-                  <div class="dropdown-item mode-option" data-value="plan" data-label="Modo Plan" role="option" aria-selected="false">
-                    <div class="item-icon-circle mode-plan-color">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
-                        <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
-                        <line x1="9" y1="11" x2="15" y2="11"></line>
-                        <line x1="9" y1="16" x2="13" y2="16"></line>
-                      </svg>
-                    </div>
-                    <div class="item-content">
-                      <div class="item-title-row">
-                        <span class="item-title">Modo Plan</span>
-                      </div>
-                      <div class="item-desc">Diseña y analiza un plan estratégico detallado antes de realizar cambios</div>
-                    </div>
-                    <svg class="item-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <div class="input-card-footer">
+              <div class="input-meta-left">
+                <div class="custom-dropdown" id="dropdown-plus">
+                  <button type="button" class="icon-btn composer-plus" id="btn-composer-plus" title="Más acciones" aria-label="Más acciones" aria-haspopup="menu" aria-expanded="false">
+                    <svg><use href="#i-plus"/></svg>
+                  </button>
+                  <div class="dropdown-menu plus-menu" id="menu-plus" role="menu">
+                    <button type="button" class="menu-row" id="btn-plus-commands">
+                      <svg><use href="#i-slash"/></svg><span>Comandos</span><kbd>/</kbd>
+                    </button>
+                    <button type="button" class="menu-row" id="btn-plus-folder">
+                      <svg><use href="#i-folder"/></svg><span>Cambiar carpeta del proyecto</span>
+                    </button>
+                    <button type="button" class="menu-row" id="btn-plus-incognito">
+                      <svg><use href="#i-ghost"/></svg><span id="plus-incognito-label">Chat incógnito</span>
+                    </button>
                   </div>
                 </div>
+              </div>
 
-                <!-- Hidden input preserving exact compatibility with permission-mode selector in scripts -->
-                <input type="hidden" id="permission-mode" value="acceptEdits">
+              <div class="input-meta-right">
+                <input type="file" id="attach-input" multiple hidden>
+                <button type="button" class="icon-btn btn-voice" id="btn-attach" title="Adjuntar archivos o imágenes" aria-label="Adjuntar">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                  </svg>
+                </button>
+                <button type="button" class="icon-btn btn-voice" id="btn-voice" title="Dictar por voz" aria-label="Micrófono">
+                  <svg><use href="#i-mic"/></svg>
+                </button>
+                <button type="button" class="btn-stop-task" id="btn-stop" style="display: none;" title="Detener tarea activa" aria-label="Detener">
+                  <svg><use href="#i-stop"/></svg>
+                </button>
+                <button type="button" class="btn-send-claude" id="btn-send" title="Enviar mensaje" aria-label="Enviar">
+                  <svg><use href="#i-arrow-up"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Controles bajo la caja de texto -->
+          <div class="composer-toolbar">
+            <div class="toolbar-left">
+              <div class="custom-dropdown" id="dropdown-project">
+                <button type="button" class="chip-btn" id="input-ws-pill" aria-haspopup="menu" aria-expanded="false" title="Carpeta del proyecto">
+                  <span class="ws-name-text" id="input-ws-name">Proyecto</span>
+                  <svg class="chevron-icon"><use href="#i-chevron-down"/></svg>
+                </button>
+                <div class="dropdown-menu project-menu" id="menu-project" role="menu">
+                  <div class="dropdown-section-header">Carpetas recientes</div>
+                  <div id="project-recent-list"></div>
+                  <div class="dropdown-divider"></div>
+                  <button type="button" class="menu-row" id="btn-project-browse">
+                    <svg><use href="#i-folder"/></svg><span>Elegir otra carpeta…</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="custom-dropdown" id="dropdown-output">
+                <button type="button" class="chip-btn" id="btn-output-trigger" aria-haspopup="listbox" aria-expanded="false" title="Estilo de respuesta">
+                  <span id="current-output-label">Estilo</span>
+                  <svg class="chevron-icon"><use href="#i-chevron-down"/></svg>
+                </button>
+                <div class="dropdown-menu output-menu" id="menu-output" role="listbox">
+                  <div class="dropdown-section-header">Estilo de respuesta</div>
+                  <div class="dropdown-item output-option" data-value="default" role="option">
+                    <div class="item-content"><div class="item-title">Predeterminado</div><div class="item-desc">Respuestas directas y eficientes</div></div>
+                    <svg class="item-check"><use href="#i-check"/></svg>
+                  </div>
+                  <div class="dropdown-item output-option" data-value="Explanatory" role="option">
+                    <div class="item-content"><div class="item-title">Explicativo</div><div class="item-desc">Explica las decisiones y el porqué del código</div></div>
+                    <svg class="item-check"><use href="#i-check"/></svg>
+                  </div>
+                  <div class="dropdown-item output-option" data-value="Learning" role="option">
+                    <div class="item-content"><div class="item-title">Aprendizaje</div><div class="item-desc">Te guía y te deja partes para que las hagas tú</div></div>
+                    <svg class="item-check"><use href="#i-check"/></svg>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div class="input-meta-right">
-              <!-- Attach Files Button -->
-              <input type="file" id="attach-input" multiple hidden>
-              <button type="button" class="btn-voice" id="btn-attach" title="Adjuntar archivos o imágenes" aria-label="Adjuntar">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
-                </svg>
-              </button>
+            <div class="toolbar-right">
+              <!-- Aviso de límite del plan (solo a partir del 80 %) -->
+              <button type="button" class="chip-btn plan-chip" id="plan-chip" title="Ver uso del plan" hidden></button>
 
-              <!-- Voice Microphone Button -->
-              <button class="btn-voice" id="btn-voice" title="Dictar por voz" aria-label="Micrófono">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                  <line x1="12" y1="19" x2="12" y2="23"></line>
-                  <line x1="8" y1="23" x2="16" y2="23"></line>
-                </svg>
-              </button>
+              <!-- Selector de modelo + esfuerzo -->
+              <div class="custom-dropdown" id="dropdown-model">
+                <button type="button" class="chip-btn model-selector-btn" id="btn-model-trigger" aria-haspopup="listbox" aria-expanded="false" title="Modelo y esfuerzo">
+                  <span class="model-name-text" id="current-model-name">Opus 5.5</span>
+                  <span class="model-effort-text" id="current-model-tag">Auto</span>
+                </button>
 
-              <!-- Stop Task Button -->
-              <button class="btn-stop-task" id="btn-stop" style="display: none;" title="Detener tarea activa">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="6" y="6" width="12" height="12" rx="2"></rect>
-                </svg>
-              </button>
+                <div class="dropdown-menu model-menu" id="menu-model-options" role="listbox">
+                  <div id="dynamic-model-list"></div>
 
-              <!-- Send Button (Terracotta circle with arrow up) -->
-              <button class="btn-send-claude" id="btn-send" title="Enviar mensaje" aria-label="Enviar">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <line x1="12" y1="19" x2="12" y2="5"></line>
-                  <polyline points="5 12 12 5 19 12"></polyline>
-                </svg>
-              </button>
+                  <div class="dropdown-divider"></div>
+                  <div class="submenu effort-submenu" id="effort-submenu">
+                    <button type="button" class="dropdown-item submenu-trigger" aria-haspopup="listbox" aria-expanded="false">
+                      <span class="submenu-label">Esfuerzo</span>
+                      <span class="submenu-value" id="effort-current-label">Auto</span>
+                      <svg class="submenu-chevron"><use href="#i-chevron-right"/></svg>
+                    </button>
+                    <div class="submenu-flyout" id="effort-options" role="listbox"></div>
+                  </div>
+
+                  <div id="more-models-slot"></div>
+
+                  <div class="dropdown-divider"></div>
+                  <button type="button" class="dropdown-action-btn" id="btn-open-add-model">
+                    <svg><use href="#i-plus"/></svg>
+                    <span>Añadir modelo personalizado…</span>
+                  </button>
+                  <button type="button" class="dropdown-action-btn" id="btn-sync-models">
+                    <svg><use href="#i-refresh"/></svg>
+                    <span>Sincronizar con Anthropic</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Modo de ejecución -->
+              <div class="custom-dropdown" id="dropdown-mode">
+                <button type="button" class="chip-btn mode-trigger-btn" id="btn-mode-trigger" aria-haspopup="listbox" aria-expanded="false" title="Modo de ejecución de Claude">
+                  <span class="mode-icon-current" id="current-mode-icon"></span>
+                  <span class="mode-label-text" id="current-mode-label">Autónomo</span>
+                </button>
+
+                <div class="dropdown-menu mode-menu" id="menu-mode-options" role="listbox">
+                  <div class="dropdown-section-header">Modo de ejecución</div>
+
+                  <div class="dropdown-item mode-option" data-value="acceptEdits" data-label="Aceptar ediciones" role="option" aria-selected="false">
+                    <div class="item-content">
+                      <div class="item-title">Aceptar ediciones</div>
+                      <div class="item-desc">Edita archivos sin preguntar; pide permiso para comandos</div>
+                    </div>
+                    <svg class="item-check"><use href="#i-check"/></svg>
+                  </div>
+
+                  <div class="dropdown-item mode-option selected" data-value="auto" data-label="Autónomo" role="option" aria-selected="true">
+                    <div class="item-content">
+                      <div class="item-title">Autónomo</div>
+                      <div class="item-desc">Trabaja de principio a fin sin pedir confirmaciones</div>
+                    </div>
+                    <svg class="item-check"><use href="#i-check"/></svg>
+                  </div>
+
+                  <div class="dropdown-item mode-option" data-value="manual" data-label="Manual" role="option" aria-selected="false">
+                    <div class="item-content">
+                      <div class="item-title">Manual</div>
+                      <div class="item-desc">Te pide confirmación antes de cada acción</div>
+                    </div>
+                    <svg class="item-check"><use href="#i-check"/></svg>
+                  </div>
+
+                  <div class="dropdown-item mode-option" data-value="plan" data-label="Modo Plan" role="option" aria-selected="false">
+                    <div class="item-content">
+                      <div class="item-title">Modo Plan</div>
+                      <div class="item-desc">Analiza y propone un plan antes de tocar nada</div>
+                    </div>
+                    <svg class="item-check"><use href="#i-check"/></svg>
+                  </div>
+                </div>
+
+                <input type="hidden" id="permission-mode" value="auto">
+              </div>
             </div>
+          </div>
+
+          <!-- Sugerencias (solo en la pantalla de inicio) -->
+          <div class="starter-cards">
+            <button type="button" class="starter-card" data-prompt="Revisa la estructura de este proyecto y explícame sus componentes clave.">
+              <svg><use href="#i-folder"/></svg><span class="starter-text">Explorar el proyecto</span>
+            </button>
+            <button type="button" class="starter-card" data-prompt="Analiza el código en busca de posibles errores, bugs o mejoras de rendimiento.">
+              <svg><use href="#i-search"/></svg><span class="starter-text">Buscar bugs</span>
+            </button>
+            <button type="button" class="starter-card" data-prompt="Ejecuta git status y git diff para mostrarme los cambios pendientes.">
+              <svg><use href="#i-refresh"/></svg><span class="starter-text">Estado de Git</span>
+            </button>
+            <button type="button" class="starter-card" data-prompt="Crea un archivo README.md con la documentación inicial.">
+              <svg><use href="#i-feather"/></svg><span class="starter-text">Documentar</span>
+            </button>
           </div>
         </div>
       </footer>
@@ -584,11 +638,11 @@
             type="text"
             id="custom-model-id"
             class="client-key-input"
-            placeholder="ej. claude-3-7-sonnet-20250219"
+            placeholder="ej. claude-opus-5-5"
             spellcheck="false"
             autocomplete="off"
           />
-          <div class="key-input-hint">El identificador exacto de la API o alias (ej. claude-3-5-haiku-20241022).</div>
+          <div class="key-input-hint">El identificador exacto de la API o alias (ej. claude-haiku-4-5-20251001).</div>
         </div>
 
         <div class="key-field-section">
@@ -597,7 +651,7 @@
             type="text"
             id="custom-model-name-input"
             class="client-key-input"
-            placeholder="ej. Claude 3.7 Sonnet (Thinking)"
+            placeholder="ej. Claude Opus 5.5"
             spellcheck="false"
           />
         </div>
@@ -630,6 +684,123 @@
       <div class="modal-bottom">
         <button class="btn-text" id="btn-cancel-custom-model-modal">Cancelar</button>
         <button class="btn-primary-terracotta" id="btn-save-custom-model">Guardar modelo</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ====================================================================
+       MODAL DE PERSONALIZACIÓN
+       ==================================================================== -->
+  <div class="modal-overlay" id="personalize-modal" style="display: none;">
+    <div class="modal-dialog personalize-dialog">
+      <div class="modal-top">
+        <h3>Personalizar</h3>
+        <button class="modal-close" id="btn-close-personalize" aria-label="Cerrar">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <section class="pz-section">
+          <label class="pz-label" for="pz-name">¿Cómo quieres que te llame?</label>
+          <input type="text" id="pz-name" class="pz-input" placeholder="Tu nombre" maxlength="40" autocomplete="off">
+          <p class="pz-hint">Aparece en el saludo de la pantalla de inicio y en tu perfil.</p>
+        </section>
+
+        <section class="pz-section">
+          <span class="pz-label">Tema</span>
+          <div class="pz-segmented" id="pz-theme">
+            <button type="button" data-value="light"><svg><use href="#i-sun"/></svg>Claro</button>
+            <button type="button" data-value="dark"><svg><use href="#i-moon"/></svg>Oscuro</button>
+            <button type="button" data-value="system"><svg><use href="#i-monitor"/></svg>Sistema</button>
+          </div>
+        </section>
+
+        <section class="pz-section">
+          <span class="pz-label">Color de acento</span>
+          <div class="pz-swatches" id="pz-accent">
+            <button type="button" data-value="terracotta" title="Terracota" style="--swatch:#d97757"></button>
+            <button type="button" data-value="ocean" title="Océano" style="--swatch:#3f7fd9"></button>
+            <button type="button" data-value="forest" title="Bosque" style="--swatch:#3f9a6b"></button>
+            <button type="button" data-value="violet" title="Violeta" style="--swatch:#8b5cf6"></button>
+            <button type="button" data-value="rose" title="Rosa" style="--swatch:#d9577f"></button>
+            <button type="button" data-value="graphite" title="Grafito" style="--swatch:#5f5e5a"></button>
+          </div>
+        </section>
+
+        <section class="pz-section">
+          <span class="pz-label">Fuente de las respuestas</span>
+          <div class="pz-segmented" id="pz-font">
+            <button type="button" data-value="serif"><span class="pz-font-sample pz-font-serif">Aa</span>Serif</button>
+            <button type="button" data-value="sans"><span class="pz-font-sample pz-font-sans">Aa</span>Sans</button>
+            <button type="button" data-value="mono"><span class="pz-font-sample pz-font-mono">Aa</span>Mono</button>
+          </div>
+        </section>
+
+        <section class="pz-section">
+          <label class="pz-label" for="pz-instructions">Instrucciones personalizadas</label>
+          <textarea id="pz-instructions" class="pz-input pz-textarea" rows="4" maxlength="4000" placeholder="Ej.: Respóndeme siempre en español, sé conciso y explica los cambios antes de aplicarlos."></textarea>
+          <p class="pz-hint">Se añaden a las instrucciones de Claude en cada mensaje que envíes desde este navegador.</p>
+        </section>
+      </div>
+
+      <div class="modal-bottom">
+        <button class="btn-text" id="btn-cancel-personalize">Cancelar</button>
+        <button class="btn-primary-terracotta" id="btn-save-personalize">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL DE USO Y GASTO
+       ==================================================================== -->
+  <div class="modal-overlay" id="usage-modal" style="display: none;">
+    <div class="modal-dialog usage-dialog">
+      <div class="modal-top">
+        <h3>Uso y gasto</h3>
+        <button class="modal-close" id="btn-close-usage" aria-label="Cerrar">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <section class="plan-limits" id="plan-limits" hidden></section>
+        <div class="usage-body" id="usage-body">
+          <div class="usage-empty">Cargando…</div>
+        </div>
+      </div>
+
+      <div class="modal-bottom">
+        <button class="btn-text" id="btn-reset-usage">Poner a cero</button>
+        <button class="btn-primary-terracotta" id="btn-done-usage">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL DE SEGURIDAD
+       ==================================================================== -->
+  <div class="modal-overlay" id="security-modal" style="display: none;">
+    <div class="modal-dialog security-dialog">
+      <div class="modal-top">
+        <h3>Seguridad</h3>
+        <button class="modal-close" id="btn-close-security" aria-label="Cerrar">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <form class="pz-section" id="security-password-form" autocomplete="on">
+          <span class="pz-label">Cambiar contraseña</span>
+          <input type="text" autocomplete="username" id="security-user" hidden>
+          <input type="password" id="security-current" class="pz-input" placeholder="Contraseña actual" required autocomplete="current-password">
+          <input type="password" id="security-new" class="pz-input" placeholder="Nueva contraseña (mínimo 8 caracteres)" required minlength="8" autocomplete="new-password">
+          <input type="password" id="security-confirm" class="pz-input" placeholder="Repite la nueva contraseña" required minlength="8" autocomplete="new-password">
+          <div class="key-status-box" id="security-status" style="display: none;"></div>
+          <div><button type="submit" class="btn-primary-terracotta">Cambiar contraseña</button></div>
+          <p class="pz-hint">Al cambiarla se cierra la sesión en el resto de dispositivos. Si la olvidas, pon una nueva en <code>CLAUDEZER0_PASSWORD</code> del <code>.env</code> y reinicia el servidor.</p>
+        </form>
+
+        <section class="pz-section">
+          <span class="pz-label">Sesiones abiertas</span>
+          <p class="pz-hint">Si has entrado desde un dispositivo que ya no usas o no reconoces, ciérralas todas. Tendrás que volver a iniciar sesión también aquí.</p>
+          <div><button type="button" class="btn-text security-danger" id="btn-logout-all">Cerrar sesión en todos los dispositivos</button></div>
+        </section>
       </div>
     </div>
   </div>

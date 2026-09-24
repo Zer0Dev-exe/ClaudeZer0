@@ -34,7 +34,7 @@ export function getClaudeBinary() {
  * Mapear identificadores de modelo a los alias oficiales requeridos por Claude Code CLI ('sonnet', 'haiku', 'opus')
  */
 export function mapModelToCli(model) {
-  if (!model) return 'sonnet';
+  if (!model) return 'opus';
   const m = String(model).trim();
   const lower = m.toLowerCase();
   const legacySonnetIds = new Set([
@@ -44,6 +44,7 @@ export function mapModelToCli(model) {
   ]);
   if (legacySonnetIds.has(lower)) return 'sonnet';
   if (lower.startsWith('claude-')) return m;
+  if (lower.includes('fable')) return 'claude-fable-5-1';
   if (lower.includes('haiku')) return 'haiku';
   if (lower.includes('opus')) return 'opus';
   if (lower.includes('sonnet')) return 'sonnet';
@@ -102,6 +103,56 @@ function removeTempDir(dir) {
   } catch (e) {
     // ignore
   }
+}
+
+export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
+const OUTPUT_STYLES = ['Explanatory', 'Learning'];
+
+const tmpDir = path.join(projectRoot, 'data', '.tmp');
+if (!fs.existsSync(tmpDir)) {
+  try {
+    fs.mkdirSync(tmpDir, { recursive: true });
+  } catch (e) {
+    // ignore
+  }
+}
+
+/**
+ * Archivo de settings con el estilo de respuesta elegido (null = estilo por defecto)
+ */
+function getOutputStyleSettingsFile(outputStyle) {
+  if (!OUTPUT_STYLES.includes(outputStyle)) return null;
+  const file = path.join(tmpDir, `output-style-${outputStyle.toLowerCase()}.json`);
+  if (!fs.existsSync(file)) {
+    fs.writeFileSync(file, JSON.stringify({ outputStyle }), 'utf-8');
+  }
+  return file;
+}
+
+/**
+ * Borrar la transcripción que Claude Code guarda en disco para una sesión (usado por el modo incógnito)
+ */
+export function deleteClaudeTranscript(claudeSessionId) {
+  if (!/^[0-9a-f-]{36}$/i.test(String(claudeSessionId || ''))) return 0;
+  const configDirs = [
+    process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'),
+    clientConfigDir
+  ];
+  let removed = 0;
+  for (const dir of configDirs) {
+    const projectsDir = path.join(dir, 'projects');
+    if (!fs.existsSync(projectsDir)) continue;
+    for (const project of fs.readdirSync(projectsDir)) {
+      const base = path.join(projectsDir, project, claudeSessionId);
+      for (const target of [`${base}.jsonl`, base]) {
+        if (fs.existsSync(target)) {
+          fs.rmSync(target, { recursive: true, force: true });
+          removed++;
+        }
+      }
+    }
+  }
+  return removed;
 }
 
 /**
@@ -213,6 +264,9 @@ export function getClaudeAuthStatus(clientApiKey = null) {
  * @param {string} [options.model] - Model name or alias
  * @param {string} [options.apiKey] - Claude API Key (requerida en Client mode, opcional en Hoster mode)
  * @param {Array<{name: string, data: string}>} [options.attachments] - Archivos adjuntos en base64 (temporales)
+ * @param {string} [options.effort] - Nivel de esfuerzo: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+ * @param {string} [options.outputStyle] - Estilo de respuesta: 'default' | 'Explanatory' | 'Learning'
+ * @param {string} [options.customInstructions] - Instrucciones personalizadas que se añaden al system prompt
  * @param {function} options.onEvent - Callback for streaming events
  * @param {function} options.onDone - Callback when completed
  * @param {function} options.onError - Callback on error
@@ -225,18 +279,15 @@ export function executeTask({
   model,
   apiKey,
   attachments,
+  effort,
+  outputStyle,
+  customInstructions,
   onEvent,
   onDone,
   onError
 }) {
   if (activeProcess) {
     throw new Error('Ya hay una tarea en ejecución con Claude Code. Cancélala primero.');
-  }
-
-  const temp = writeTempAttachments(attachments);
-  if (temp) {
-    // En una sola línea: cmd.exe /c corta los argumentos con saltos de línea
-    prompt = `${prompt} [Archivos adjuntos por el usuario (léelos con la herramienta Read): ${temp.files.join(' , ')}]`;
   }
 
   const appMode = getAppMode();
@@ -268,6 +319,12 @@ export function executeTask({
 
   const targetDir = workspace && fs.existsSync(workspace) ? workspace : projectRoot;
 
+  const temp = writeTempAttachments(attachments);
+  if (temp) {
+    // En una sola línea: cmd.exe /c corta los argumentos con saltos de línea
+    prompt = `${prompt} [Archivos adjuntos por el usuario (léelos con la herramienta Read): ${temp.files.join(' , ')}]`;
+  }
+
   // Build arguments for Claude Code
   const args = [
     '-p', prompt,
@@ -284,6 +341,25 @@ export function executeTask({
   // Set model using valid Claude Code CLI alias
   const cliModel = mapModelToCli(model);
   args.push('--model', cliModel);
+
+  // Nivel de esfuerzo (solo valores admitidos por el CLI; sin flag = valor por defecto del modelo)
+  if (effort && EFFORT_LEVELS.includes(effort)) {
+    args.push('--effort', effort);
+  }
+
+  // Estilo de respuesta (se pasa como archivo de settings para evitar problemas de comillas en cmd.exe)
+  const stylePath = getOutputStyleSettingsFile(outputStyle);
+  if (stylePath) {
+    args.push('--settings', stylePath);
+  }
+
+  // Instrucciones personalizadas (archivo temporal, se borra al terminar la tarea)
+  let instructionsPath = null;
+  if (customInstructions && customInstructions.trim()) {
+    instructionsPath = path.join(tmpDir, `instructions-${taskId}.txt`);
+    fs.writeFileSync(instructionsPath, customInstructions.trim().slice(0, 4000), 'utf-8');
+    args.push('--append-system-prompt-file', instructionsPath);
+  }
 
   // Resume previous session if provided
   if (sessionId) {
@@ -349,41 +425,61 @@ export function executeTask({
           capturedSessionId = event.session_id;
         }
 
-        // Handle streaming assistant deltas
-        if (event.type === 'content_block_delta' && event.delta) {
-          if (event.delta.type === 'text_delta') {
-            accumulatedText += event.delta.text;
+        // Los eventos de subagentes (Task) llevan parent_tool_use_id: su texto no se mezcla con la respuesta principal
+        const isSubagent = !!event.parent_tool_use_id;
+
+        // Con --include-partial-messages los eventos de la API llegan envueltos en { type: 'stream_event', event }
+        if (event.type === 'stream_event' && event.event) {
+          const inner = event.event;
+          if (isSubagent) continue;
+          if (inner.type === 'content_block_start' && inner.content_block?.type === 'text' && accumulatedText) {
+            // Nuevo bloque de texto tras herramientas o turnos previos: separar en párrafo nuevo
+            accumulatedText += '\n\n';
+            onEvent({ type: 'text_delta', text: '\n\n', sessionId: capturedSessionId });
+          } else if (inner.type === 'content_block_delta' && inner.delta) {
+            if (inner.delta.type === 'text_delta') {
+              accumulatedText += inner.delta.text;
+              onEvent({
+                type: 'text_delta',
+                text: inner.delta.text,
+                sessionId: capturedSessionId
+              });
+            } else if (inner.delta.type === 'thinking_delta' && inner.delta.thinking) {
+              onEvent({
+                type: 'thinking_delta',
+                thinking: inner.delta.thinking,
+                sessionId: capturedSessionId
+              });
+            }
+          }
+        } else if (event.type === 'assistant' && Array.isArray(event.message?.content)) {
+          // Mensaje completo del asistente: aquí llegan las llamadas a herramientas con su input completo
+          for (const block of event.message.content) {
+            if (block.type !== 'tool_use') continue;
             onEvent({
-              type: 'text_delta',
-              text: event.delta.text,
-              sessionId: capturedSessionId
-            });
-          } else if (event.delta.type === 'thinking_delta') {
-            onEvent({
-              type: 'thinking_delta',
-              thinking: event.delta.thinking,
+              type: 'tool_use',
+              id: block.id,
+              tool: block.name,
+              input: block.input,
+              subagent: isSubagent,
               sessionId: capturedSessionId
             });
           }
-        } else if (event.type === 'assistant_response' || event.type === 'message_start') {
-          onEvent({
-            type: 'message_start',
-            sessionId: capturedSessionId,
-            event
-          });
-        } else if (event.type === 'tool_use' || (event.content_block && event.content_block.type === 'tool_use')) {
-          onEvent({
-            type: 'tool_use',
-            tool: event.content_block ? event.content_block.name : event.name,
-            input: event.content_block ? event.content_block.input : event.input,
-            sessionId: capturedSessionId
-          });
-        } else if (event.type === 'tool_result') {
-          onEvent({
-            type: 'tool_result',
-            toolResult: event,
-            sessionId: capturedSessionId
-          });
+        } else if (event.type === 'user' && Array.isArray(event.message?.content)) {
+          // Resultados de herramientas (devueltos por Claude Code como mensaje de usuario)
+          for (const block of event.message.content) {
+            if (block.type !== 'tool_result') continue;
+            const content = Array.isArray(block.content)
+              ? block.content.map(c => c.text || '').join('\n')
+              : String(block.content || '');
+            onEvent({
+              type: 'tool_result',
+              id: block.tool_use_id,
+              isError: !!block.is_error,
+              content: content.slice(0, 2000),
+              sessionId: capturedSessionId
+            });
+          }
         } else if (event.type === 'result') {
           fullResult = event;
           if (event.result && !accumulatedText) {
@@ -435,6 +531,12 @@ export function executeTask({
       sessionId: capturedSessionId
     });
   });
+
+  const cleanupInstructions = () => {
+    if (instructionsPath) fs.rm(instructionsPath, { force: true }, () => {});
+  };
+  child.once('close', cleanupInstructions);
+  child.once('error', cleanupInstructions);
 
   child.on('close', (code) => {
     // Process any remaining text in buffer

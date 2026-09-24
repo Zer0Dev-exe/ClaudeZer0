@@ -14,10 +14,37 @@ let currentTextElement = null;
 let currentThinkingElement = null;
 let currentAccumulatedText = '';
 let currentAccumulatedThinking = '';
+// Texto del bloque visible actual (se reinicia tras cada herramienta para intercalar texto y acciones)
+let currentSegmentText = '';
+const currentToolCards = new Map();
 
 let recognition = null;
 let isListening = false;
 let browsingDirectory = '';
+
+// Preferencias del usuario (solo en este navegador)
+function readPref(key, fallback = '') {
+  try {
+    return localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writePref(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // almacenamiento no disponible: la preferencia dura solo esta sesión
+  }
+}
+
+let selectedEffort = readPref('claudezer0_effort', 'auto');
+let selectedOutputStyle = readPref('claudezer0_output_style', 'default');
+let incognitoMode = false;
+let incognitoSessionId = null;
+let sessionFilter = '';
+let lastSessionsList = [];
 
 // DOM Elements: Auth
 const loginScreen = document.getElementById('login-screen');
@@ -92,10 +119,12 @@ let currentSlashMatches = [];
 
 // Dynamic Models Catalog
 let availableModelsList = [
-  { id: 'sonnet', name: 'Claude 3.7 Sonnet', tag: 'Híbrido', desc: 'Pensamiento híbrido y alta precisión', default: true },
-  { id: 'haiku', name: 'Claude 3.5 Haiku', tag: 'Ultrarrápido', desc: 'Velocidad y bajo coste' },
-  { id: 'opus', name: 'Claude 3 Opus', tag: 'Profundo', desc: 'Capacidad profunda y contextual' }
+  { id: 'claude-fable-5-1', name: 'Claude Fable 5.1', tag: 'Máximo', desc: 'Para tus desafíos más difíciles' },
+  { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', tag: 'Profundo', desc: 'El más capaz para trabajos ambiciosos', default: true },
+  { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', tag: 'Equilibrado', desc: 'Lo más eficiente para las tareas diarias' },
+  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', tag: 'Ultrarrápido', desc: 'La más rápida para respuestas inmediatas' }
 ];
+const DEFAULT_MODEL_ID = 'claude-opus-5-5';
 let availableModelsMap = {};
 
 function rebuildModelsMap() {
@@ -103,9 +132,11 @@ function rebuildModelsMap() {
   availableModelsList.forEach(m => {
     availableModelsMap[m.id] = m;
     const lower = m.id.toLowerCase();
-    if (lower.includes('sonnet')) availableModelsMap['sonnet'] = m;
-    if (lower.includes('haiku')) availableModelsMap['haiku'] = m;
-    if (lower.includes('opus')) availableModelsMap['opus'] = m;
+    // Los alias genéricos apuntan al primer (más reciente) modelo de cada familia
+    if (lower.includes('sonnet') && !availableModelsMap['sonnet']) availableModelsMap['sonnet'] = m;
+    if (lower.includes('haiku') && !availableModelsMap['haiku']) availableModelsMap['haiku'] = m;
+    if (lower.includes('opus') && !availableModelsMap['opus']) availableModelsMap['opus'] = m;
+    if (lower.includes('fable') && !availableModelsMap['fable']) availableModelsMap['fable'] = m;
   });
 }
 rebuildModelsMap();
@@ -141,11 +172,15 @@ const EXECUTION_MODES = {
   }
 };
 
-let selectedModel = localStorage.getItem('claudezer0_model') || 'sonnet';
-if (selectedModel === 'claude-3-7-sonnet' || selectedModel === 'claude-3-7-sonnet-latest' || selectedModel === 'claude-3-7-sonnet-20250219') {
-  selectedModel = 'sonnet';
-  localStorage.setItem('claudezer0_model', selectedModel);
+// Descartar selecciones guardadas de modelos retirados (Claude 3.x)
+function sanitizeStoredModel(id) {
+  if (!id || /^claude-3/i.test(id)) return DEFAULT_MODEL_ID;
+  // Alias genéricos antiguos ('sonnet', 'opus'...) -> ID concreto del modelo actual
+  if (availableModelsMap[id] && availableModelsMap[id].id !== id) return availableModelsMap[id].id;
+  return id;
 }
+
+let selectedModel = sanitizeStoredModel(localStorage.getItem('claudezer0_model'));
 
 // DOM Elements: Workspace Modal
 const workspaceModal = document.getElementById('workspace-modal');
@@ -200,9 +235,13 @@ async function checkAuth() {
     const res = await fetch('/api/auth/verify', {
       headers: { 'Authorization': `Bearer ${authToken}` }
     });
-    if (res.ok) {
+    const data = res.ok ? await res.json() : null;
+    if (data && data.success && !data.mustChangePassword) {
+      if (data.username) setCurrentUsername(data.username);
       showApp();
     } else {
+      // Sin sesión, o hay que cambiar la contraseña por defecto (para eso se pide volver a entrar)
+      clearAuthToken();
       showLogin();
     }
   } catch (err) {
@@ -211,10 +250,79 @@ async function checkAuth() {
   }
 }
 
+// Contraseña recién introducida, solo mientras se obliga a cambiar la de por defecto
+let pendingLoginPassword = null;
+
+function setCurrentUsername(name) {
+  currentUsername = name;
+  localStorage.setItem('claudezer0_user', name);
+}
+
+function clearAuthToken() {
+  localStorage.removeItem('claudezer0_token');
+  authToken = null;
+}
+
 function showLogin() {
+  pendingLoginPassword = null;
+  document.getElementById('login-card').hidden = false;
+  document.getElementById('force-password-card').hidden = true;
   loginScreen.style.display = 'flex';
   mainApp.style.display = 'none';
 }
+
+function showForcePasswordChange() {
+  document.getElementById('login-card').hidden = true;
+  document.getElementById('force-password-card').hidden = false;
+  document.getElementById('force-password-user').value = currentUsername;
+  document.getElementById('force-password-error').style.display = 'none';
+  loginScreen.style.display = 'flex';
+  mainApp.style.display = 'none';
+  document.getElementById('force-password-new').focus();
+}
+
+async function requestPasswordChange(currentPassword, newPassword) {
+  const res = await fetch('/api/auth/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+    body: JSON.stringify({ currentPassword, newPassword })
+  });
+  return res.json();
+}
+
+document.getElementById('force-password-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errorBox = document.getElementById('force-password-error');
+  const next = document.getElementById('force-password-new').value;
+  const confirm = document.getElementById('force-password-confirm').value;
+  errorBox.style.display = 'none';
+
+  if (next !== confirm) {
+    errorBox.textContent = 'Las contraseñas no coinciden';
+    errorBox.style.display = 'block';
+    return;
+  }
+  if (!pendingLoginPassword) {
+    showLogin();
+    return;
+  }
+
+  try {
+    const data = await requestPasswordChange(pendingLoginPassword, next);
+    if (data.success) {
+      pendingLoginPassword = null;
+      e.target.reset();
+      showApp();
+      showToast('Contraseña actualizada');
+    } else {
+      errorBox.textContent = data.message || 'No se pudo cambiar la contraseña';
+      errorBox.style.display = 'block';
+    }
+  } catch (err) {
+    errorBox.textContent = 'Error al conectar con el servidor';
+    errorBox.style.display = 'block';
+  }
+});
 
 function showApp() {
   loginScreen.style.display = 'none';
@@ -242,10 +350,15 @@ loginForm.addEventListener('submit', async (e) => {
 
     if (data.success) {
       authToken = data.token;
-      currentUsername = data.username;
+      setCurrentUsername(data.username);
       localStorage.setItem('claudezer0_token', authToken);
-      localStorage.setItem('claudezer0_user', currentUsername);
-      showApp();
+      loginPassword.value = '';
+      if (data.mustChangePassword) {
+        pendingLoginPassword = password;
+        showForcePasswordChange();
+      } else {
+        showApp();
+      }
     } else {
       loginError.textContent = data.message || 'Usuario o contraseña incorrectos';
       loginError.style.display = 'block';
@@ -264,8 +377,7 @@ btnLogout.addEventListener('click', async () => {
     });
   } catch (e) {}
 
-  localStorage.removeItem('claudezer0_token');
-  authToken = null;
+  clearAuthToken();
   showLogin();
 });
 
@@ -277,7 +389,8 @@ async function authFetch(url, options = {}) {
     options.headers['x-claude-api-key'] = clientApiKey;
   }
   const res = await fetch(url, options);
-  if (res.status === 401) {
+  if (res.status === 401 || res.status === 403) {
+    clearAuthToken();
     showLogin();
     throw new Error('No autorizado');
   }
@@ -289,17 +402,20 @@ async function authFetch(url, options = {}) {
 // ==========================================================================
 function initApp() {
   initModelAndMode();
-  loadModels();
+  loadModels().then(syncModelsSilently);
   connectWebSocket();
   loadInitialStatus();
+  loadPlanLimits();
   loadSessions();
   setupVoice();
   setupEventListeners();
+  setupShell();
 }
 
 function connectWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}?token=${authToken}`;
+  // El token se envía en el primer mensaje (onopen), no en la URL
+  const wsUrl = `${protocol}//${window.location.host}`;
 
   if (statusIndicator) statusIndicator.className = 'status-indicator';
   if (statusText) statusText.textContent = 'Conectando...';
@@ -312,10 +428,16 @@ function connectWebSocket() {
     ws.send(JSON.stringify({ type: 'auth', token: authToken }));
   };
 
-  ws.onclose = () => {
+  ws.onclose = (event) => {
     if (statusIndicator) statusIndicator.className = 'status-indicator';
     if (statusText) statusText.textContent = 'Desconectado';
     if (btnModelTrigger) btnModelTrigger.classList.remove('working');
+    // 4001: el servidor ha cerrado esta sesión (cambio de contraseña o «cerrar en todos»)
+    if (event.code === 4001) {
+      clearAuthToken();
+      showLogin();
+      return;
+    }
     setTimeout(() => {
       if (authToken) connectWebSocket();
     }, 3000);
@@ -346,9 +468,7 @@ async function loadInitialStatus() {
       updateWorkspaceUI(data.currentWorkspace);
     }
     if (data.availableModels && Array.isArray(data.availableModels)) {
-      availableModelsList = data.availableModels;
-      rebuildModelsMap();
-      renderModelDropdown();
+      applyModelsList(data.availableModels, data.defaultModel);
     }
   } catch (e) {}
 }
@@ -358,19 +478,42 @@ async function loadModels() {
     const res = await authFetch('/api/models');
     const data = await res.json();
     if (data.success && Array.isArray(data.models)) {
-      availableModelsList = data.models;
-      rebuildModelsMap();
-      renderModelDropdown();
+      applyModelsList(data.models, data.defaultModel);
     }
   } catch (err) {
     console.warn('Error cargando modelos:', err);
   }
 }
 
+// Aplicar un catálogo nuevo; si el modelo seleccionado ya no existe, pasar al por defecto
+function applyModelsList(models, defaultModel) {
+  if (!Array.isArray(models) || models.length === 0) return;
+  availableModelsList = models;
+  rebuildModelsMap();
+  if (!availableModelsList.some(m => m.id === selectedModel)) {
+    const fallback = availableModelsList.find(m => m.id === defaultModel)
+      || availableModelsList.find(m => m.isDefault)
+      || availableModelsList[0];
+    setModel(fallback.id, fallback.name, fallback.tag);
+  }
+  renderModelDropdown();
+}
+
+// Consultar a Anthropic los modelos actuales al abrir la app (sin avisos si falla)
+async function syncModelsSilently() {
+  try {
+    const res = await authFetch('/api/models/sync', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) applyModelsList(data.models, data.defaultModel);
+  } catch (err) {
+    console.warn('No se pudo sincronizar modelos con Anthropic:', err);
+  }
+}
+
 function updateModeUI() {
   if (appMode === 'Client') {
     if (userPlanLabel) {
-      userPlanLabel.textContent = clientApiKey ? 'Cliente (Key lista)' : 'Cliente (Sin Key)';
+      userPlanLabel.textContent = clientApiKey ? 'Clave propia' : 'Sin clave';
     }
     if (btnModeIndicator && modePillText && modePillDot) {
       if (clientApiKey) {
@@ -392,13 +535,13 @@ function updateModeUI() {
     // Hoster mode
     const isHostLoggedIn = serverAuthInfo && serverAuthInfo.loggedIn;
     const planName = serverAuthInfo && serverAuthInfo.subscriptionType
-      ? `Claude ${serverAuthInfo.subscriptionType.toUpperCase()}`
-      : (isHostLoggedIn ? 'Claude Conectado' : 'Sin cuenta');
+      ? serverAuthInfo.subscriptionType.charAt(0).toUpperCase() + serverAuthInfo.subscriptionType.slice(1).toLowerCase()
+      : (isHostLoggedIn ? 'Conectado' : 'Sin cuenta');
 
     if (userPlanLabel) {
       userPlanLabel.textContent = clientApiKey
-        ? 'Hoster (Key propia)'
-        : (isHostLoggedIn ? planName : 'Hoster (Sin cuenta)');
+        ? 'Clave propia'
+        : (isHostLoggedIn ? planName : 'Sin cuenta');
     }
 
     const userPill = document.getElementById('btn-sidebar-user-pill');
@@ -427,6 +570,7 @@ function updateModeUI() {
         : 'Modo Hoster: El anfitrión debe vincular su cuenta con "pnpm auth:login" o definir ANTHROPIC_API_KEY en .env.';
     }
   }
+  if (shellReady) updateUserIdentity();
 }
 
 function updateWorkspaceUI(wsPath) {
@@ -452,22 +596,27 @@ async function loadSessions() {
 }
 
 function renderSessionsList(sessions) {
+  lastSessionsList = sessions;
   sessionsList.innerHTML = '';
   if (sessions.length === 0) {
     sessionsList.innerHTML = '<div class="sessions-loading">Sin conversaciones previas</div>';
     return;
   }
 
-  sessions.forEach(sess => {
+  const query = sessionFilter.trim().toLowerCase();
+  const visible = query ? sessions.filter(s => (s.title || '').toLowerCase().includes(query)) : sessions;
+  if (visible.length === 0) {
+    sessionsList.innerHTML = '<div class="sessions-loading">Ninguna conversación coincide</div>';
+    return;
+  }
+
+  visible.forEach(sess => {
     const item = document.createElement('div');
     item.className = 'session-item' + (sess.id === activeSessionId ? ' active' : '');
     item.innerHTML = `
       <span class="session-title-text" title="${escapeHtml(sess.title)}">${escapeHtml(sess.title)}</span>
-      <button class="session-del-btn" title="Eliminar chat" data-id="${sess.id}">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="3 6 5 6 21 6"></polyline>
-          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
-        </svg>
+      <button class="session-del-btn" title="Eliminar chat" aria-label="Eliminar chat" data-id="${sess.id}">
+        <svg><use href="#i-trash"/></svg>
       </button>
     `;
 
@@ -486,9 +635,11 @@ function renderSessionsList(sessions) {
 
     sessionsList.appendChild(item);
   });
+  if (shellReady) updateTopTitle();
 }
 
 async function openSession(id) {
+  if (incognitoMode) setIncognito(false);
   try {
     const res = await authFetch(`/api/sessions/${id}`);
     const data = await res.json();
@@ -516,6 +667,7 @@ async function deleteSession(id) {
 }
 
 function newChat() {
+  discardIncognitoSession();
   activeSessionId = null;
   topChatTitle.textContent = 'Nueva conversación';
   messagesContainer.innerHTML = '';
@@ -657,21 +809,95 @@ function setupAttachments() {
   });
 }
 
+function shortPath(p) {
+  const parts = String(p || '').split(/[\\/]/).filter(Boolean);
+  return parts.slice(-2).join('/') || String(p || '');
+}
+
+/**
+ * Describir en lenguaje natural qué está haciendo una herramienta (verbo + objetivo)
+ */
+function describeTool(tool, input) {
+  const i = input || {};
+  const trunc = (s, n = 80) => {
+    const str = String(s || '').replace(/\s+/g, ' ').trim();
+    return str.length > n ? str.slice(0, n) + '…' : str;
+  };
+  switch (tool) {
+    case 'Read': return { verb: 'Leyendo', target: shortPath(i.file_path) };
+    case 'Write': return { verb: 'Creando', target: shortPath(i.file_path) };
+    case 'Edit':
+    case 'MultiEdit': return { verb: 'Editando', target: shortPath(i.file_path) };
+    case 'NotebookEdit': return { verb: 'Editando notebook', target: shortPath(i.notebook_path) };
+    case 'Bash': return { verb: 'Ejecutando', target: trunc(i.description || i.command) };
+    case 'Glob': return { verb: 'Buscando archivos', target: trunc(i.pattern) };
+    case 'Grep': return { verb: 'Buscando', target: trunc(i.pattern) };
+    case 'WebFetch': return { verb: 'Consultando', target: trunc(i.url) };
+    case 'WebSearch': return { verb: 'Buscando en la web', target: trunc(i.query) };
+    case 'Task':
+    case 'Agent': return { verb: 'Lanzando subagente', target: trunc(i.description) };
+    case 'TodoWrite': return { verb: 'Actualizando lista de tareas', target: '' };
+    default: return { verb: tool || 'Herramienta', target: '' };
+  }
+}
+
+/**
+ * Detalle desplegable de la herramienta: diff para ediciones, comando para Bash, JSON para el resto
+ */
+function toolDetailHtml(tool, input) {
+  const i = input || {};
+  if ((tool === 'Edit') && (i.old_string != null || i.new_string != null)) {
+    const del = String(i.old_string || '').split('\n').map(l => `<span class="diff-del">- ${escapeHtml(l)}</span>`).join('\n');
+    const add = String(i.new_string || '').split('\n').map(l => `<span class="diff-add">+ ${escapeHtml(l)}</span>`).join('\n');
+    return `<pre class="claude-tool-body">${del}\n${add}</pre>`;
+  }
+  if (tool === 'Write' && i.content != null) {
+    return `<pre class="claude-tool-body">${escapeHtml(String(i.content).slice(0, 1500))}</pre>`;
+  }
+  if (tool === 'Bash' && i.command) {
+    return `<pre class="claude-tool-body">$ ${escapeHtml(i.command)}</pre>`;
+  }
+  if (tool === 'TodoWrite' && Array.isArray(i.todos)) {
+    const mark = { completed: '✓', in_progress: '▸', pending: '○' };
+    return `<pre class="claude-tool-body">${i.todos.map(t => `${mark[t.status] || '○'} ${escapeHtml(t.content || '')}`).join('\n')}</pre>`;
+  }
+  const str = typeof input === 'object' ? JSON.stringify(input, null, 2) : String(input || '');
+  return str ? `<pre class="claude-tool-body">${escapeHtml(str.slice(0, 1500))}</pre>` : '';
+}
+
+function buildToolCard(t) {
+  const { verb, target } = describeTool(t.tool, t.input);
+  const card = document.createElement('details');
+  card.className = `claude-tool is-${t.status || 'running'}`;
+  card.innerHTML = `
+    <summary class="claude-tool-name">
+      <span class="tool-status"></span>
+      <span class="tool-verb">${escapeHtml(verb)}</span>
+      ${target ? `<code class="tool-target">${escapeHtml(target)}</code>` : ''}
+    </summary>
+    ${toolDetailHtml(t.tool, t.input)}
+  `;
+  return card;
+}
+
+function setToolCardStatus(card, status) {
+  card.classList.remove('is-running', 'is-done', 'is-error');
+  card.classList.add(`is-${status}`);
+}
+
 function startStreamingAssistant() {
   emptyState.style.display = 'none';
   currentAccumulatedText = '';
   currentAccumulatedThinking = '';
+  currentSegmentText = '';
+  currentToolCards.clear();
 
   const row = document.createElement('div');
   row.className = 'msg-row assistant';
 
   row.innerHTML = `
     <div class="assistant-head">
-      <div class="claude-avatar-mini">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2L13.7 8.3L20 7L15.8 12L20 17L13.7 15.7L12 22L10.3 15.7L4 17L8.2 12L4 7L10.3 8.3L12 2Z"/>
-        </svg>
-      </div>
+      <div class="claude-avatar-mini"><svg><use href="#i-spark"/></svg></div>
       <span class="assistant-name">Claude</span>
     </div>
     <div class="msg-bubble">
@@ -710,11 +936,7 @@ function appendAssistantMsgStatic(msg) {
 
   row.innerHTML = `
     <div class="assistant-head">
-      <div class="claude-avatar-mini">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2L13.7 8.3L20 7L15.8 12L20 17L13.7 15.7L12 22L10.3 15.7L4 17L8.2 12L4 7L10.3 8.3L12 2Z"/>
-        </svg>
-      </div>
+      <div class="claude-avatar-mini"><svg><use href="#i-spark"/></svg></div>
       <span class="assistant-name">Claude</span>
     </div>
     <div class="msg-bubble">
@@ -723,7 +945,18 @@ function appendAssistantMsgStatic(msg) {
     </div>
   `;
 
+  if (Array.isArray(msg.tools) && msg.tools.length) {
+    const bubble = row.querySelector('.msg-bubble');
+    const textBody = row.querySelector('.text-body');
+    for (const t of msg.tools) {
+      if (t.subagent) continue;
+      // Una herramienta que quedó en 'running' en el historial ya no se está ejecutando
+      bubble.insertBefore(buildToolCard({ ...t, status: t.status === 'error' ? 'error' : 'done' }), textBody);
+    }
+  }
+
   messagesContainer.appendChild(row);
+  appendCostFooter(row, msg.cost);
 }
 
 function scrollToBottom() {
@@ -739,11 +972,7 @@ function renderAssistantCard(htmlContent) {
   row.className = 'msg-row assistant';
   row.innerHTML = `
     <div class="assistant-head">
-      <div class="claude-avatar-mini">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 2L13.7 8.3L20 7L15.8 12L20 17L13.7 15.7L12 22L10.3 15.7L4 17L8.2 12L4 7L10.3 8.3L12 2Z"/>
-        </svg>
-      </div>
+      <div class="claude-avatar-mini"><svg><use href="#i-spark"/></svg></div>
       <span class="assistant-name">Claude</span>
     </div>
     <div class="msg-bubble">
@@ -1068,7 +1297,7 @@ function handleSlashHelp() {
   let commandsListHtml = '';
   SLASH_COMMANDS.forEach(c => {
     commandsListHtml += `
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06); gap:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; padding:8px 0; border-bottom:1px solid var(--border-subtle); gap:12px;">
         <div>
           <div style="display:flex; align-items:center; gap:6px;">
             <code style="color:var(--claude-terracotta); font-weight:600; font-size:0.86rem;">${escapeHtml(c.name)}</code>
@@ -1152,7 +1381,7 @@ async function handleSlashSync() {
             <span>Modelos sincronizados con éxito</span>
           </div>
           <div style="font-size:0.84rem; margin-top:4px;">
-            Se han sincronizado ${data.models.length} modelos. Disponibles para usar con <code>/model</code> o en el selector superior.
+            Modelos actuales: ${data.models.map(m => escapeHtml(m.name)).join(', ')}.${data.removedCount ? ` Se han eliminado ${data.removedCount} modelos antiguos.` : ''} Disponibles con <code>/model</code> o en el selector superior.
           </div>
         </div>
       `;
@@ -1164,10 +1393,12 @@ async function handleSlashSync() {
   }
 }
 
-async function sendPrompt(customPrompt) {
+async function sendPrompt(customPrompt, { skipPlanCheck = false } = {}) {
   const typed = (customPrompt || promptInput.value).trim();
-  const hasAttachments = !customPrompt && pendingAttachments.length > 0;
+  // Al reenviar tras el aviso del plan los adjuntos siguen pendientes
+  const hasAttachments = (!customPrompt || skipPlanCheck) && pendingAttachments.length > 0;
   if ((!typed && !hasAttachments) || isRunning) return;
+  hidePlanAlert();
 
   hideSlashPopup();
 
@@ -1212,6 +1443,13 @@ async function sendPrompt(customPrompt) {
   const attachments = hasAttachments ? pendingAttachments : [];
   const prompt = typed || 'Revisa los archivos adjuntos.';
 
+  // Poco margen en el plan y un modelo caro seleccionado: preguntar antes de enviar
+  const planWarning = skipPlanCheck ? null : planWarningFor(selectedModel);
+  if (planWarning) {
+    showPlanAlert(prompt, planWarning);
+    return;
+  }
+
   promptInput.value = '';
   adjustTextareaHeight();
   pendingAttachments = [];
@@ -1242,9 +1480,21 @@ async function sendPrompt(customPrompt) {
       sessionId: activeSessionId,
       permissionMode: permissionMode ? permissionMode.value : 'auto',
       model: selectedModel,
-      apiKey: clientApiKey || null
+      apiKey: clientApiKey || null,
+      effort: effectiveEffort(),
+      outputStyle: selectedOutputStyle !== 'default' ? selectedOutputStyle : null,
+      customInstructions: readPref('claudezer0_custom_instructions', '') || null,
+      incognito: incognitoMode
     }));
   }
+}
+
+// Marcar como terminadas las herramientas que no recibieron resultado (fin de tarea, error o cancelación)
+function finishToolCards(status = 'done') {
+  for (const card of currentToolCards.values()) {
+    if (card.classList.contains('is-running')) setToolCardStatus(card, status);
+  }
+  currentToolCards.clear();
 }
 
 function handleWsMessage(data) {
@@ -1252,6 +1502,7 @@ function handleWsMessage(data) {
     case 'assistant_start':
       if (data.sessionId && !activeSessionId) {
         activeSessionId = data.sessionId;
+        if (incognitoMode) incognitoSessionId = data.sessionId;
       }
       break;
 
@@ -1259,10 +1510,14 @@ function handleWsMessage(data) {
     case 'stream_raw':
       if (currentTextElement) {
         currentAccumulatedText += data.text;
+        currentSegmentText += data.text;
+        // Evitar párrafos vacíos al inicio de un bloque nuevo tras una herramienta
+        if (!currentSegmentText.trim()) break;
+        currentTextElement.style.display = '';
         if (window.marked) {
-          currentTextElement.innerHTML = marked.parse(currentAccumulatedText);
+          currentTextElement.innerHTML = marked.parse(currentSegmentText);
         } else {
-          currentTextElement.textContent = currentAccumulatedText;
+          currentTextElement.textContent = currentSegmentText;
         }
         scrollToBottom();
       }
@@ -1278,41 +1533,70 @@ function handleWsMessage(data) {
       break;
 
     case 'tool_use':
-      if (currentAssistantElement) {
+      if (currentAssistantElement && currentTextElement && !data.subagent) {
         const bubble = currentAssistantElement.querySelector('.msg-bubble');
-        const toolCard = document.createElement('div');
-        toolCard.className = 'claude-tool';
-        const inputStr = typeof data.input === 'object' ? JSON.stringify(data.input, null, 2) : String(data.input || '');
-        toolCard.innerHTML = `
-          <div class="claude-tool-name">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:-1px; margin-right:4px;">
-              <polyline points="4 17 10 11 4 5"></polyline>
-              <line x1="12" y1="19" x2="20" y2="19"></line>
-            </svg>Herramienta: ${escapeHtml(data.tool)}
-          </div>
-          ${inputStr ? `<pre class="claude-tool-body">${escapeHtml(inputStr.slice(0, 400))}</pre>` : ''}
-        `;
-        bubble.insertBefore(toolCard, currentTextElement);
+        const toolCard = buildToolCard({ tool: data.tool, input: data.input, status: 'running' });
+        if (data.id) currentToolCards.set(data.id, toolCard);
+
+        // Si el bloque de texto actual está vacío (o es el placeholder), la tarjeta ocupa su lugar
+        if (!currentSegmentText.trim()) {
+          bubble.insertBefore(toolCard, currentTextElement);
+          currentTextElement.innerHTML = '';
+          currentTextElement.style.display = 'none';
+        } else {
+          // Cerrar el bloque de texto y abrir uno nuevo debajo de la herramienta
+          bubble.appendChild(toolCard);
+          const nextText = document.createElement('div');
+          nextText.className = 'text-body';
+          nextText.style.display = 'none';
+          bubble.appendChild(nextText);
+          currentTextElement = nextText;
+          currentSegmentText = '';
+        }
         scrollToBottom();
       }
       break;
 
+    case 'tool_result': {
+      const card = currentToolCards.get(data.id);
+      if (card) {
+        setToolCardStatus(card, data.isError ? 'error' : 'done');
+        if (data.isError && data.content) {
+          card.insertAdjacentHTML('beforeend', `<pre class="claude-tool-body tool-error">${escapeHtml(data.content.slice(0, 600))}</pre>`);
+          card.open = true;
+        }
+      }
+      break;
+    }
+
+    case 'plan_limits':
+      if (!clientApiKey && data.limits) {
+        planLimitsData = data.limits;
+        onPlanLimitsUpdated();
+      }
+      break;
+
     case 'task_completed':
-      if (data.message && data.message.text && (!currentAccumulatedText || currentAccumulatedText.includes('Pensando...'))) {
+      finishToolCards();
+      if (currentTextElement && data.message && data.message.text && !currentAccumulatedText.trim()) {
         currentAccumulatedText = data.message.text;
+        currentTextElement.style.display = '';
         if (window.marked) {
           currentTextElement.innerHTML = marked.parse(currentAccumulatedText);
         } else {
           currentTextElement.textContent = currentAccumulatedText;
         }
       }
+      if (currentAssistantElement && data.message) appendCostFooter(currentAssistantElement, data.message.cost);
       setRunning(false);
       currentAssistantElement = null;
       loadSessions();
       break;
 
     case 'task_error':
+      finishToolCards('error');
       if (currentTextElement) {
+        currentTextElement.style.display = '';
         currentTextElement.innerHTML += `<div style="color:var(--danger-red); margin-top:8px; display:flex; align-items:center; gap:6px;">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
             <circle cx="12" cy="12" r="10"></circle>
@@ -1328,7 +1612,9 @@ function handleWsMessage(data) {
       break;
 
     case 'task_canceled':
+      finishToolCards('error');
       if (currentTextElement) {
+        currentTextElement.style.display = '';
         currentTextElement.innerHTML += `<div style="color:var(--text-subtle); margin-top:8px; display:flex; align-items:center; gap:6px;">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
             <circle cx="12" cy="12" r="10"></circle>
@@ -1345,11 +1631,16 @@ function handleWsMessage(data) {
     case 'workspace_changed':
       updateWorkspaceUI(data.workspace);
       break;
+
+    case 'models_updated':
+      applyModelsList(data.models, data.defaultModel);
+      break;
   }
 }
 
 function setRunning(running) {
   isRunning = running;
+  mainApp.classList.toggle('is-running', running);
   if (running) {
     if (statusIndicator) statusIndicator.className = 'status-indicator busy';
     if (statusText) statusText.textContent = 'Claude trabajando';
@@ -1374,7 +1665,9 @@ function cancelActiveTask() {
 // Auto-grow textarea
 function adjustTextareaHeight() {
   promptInput.style.height = 'auto';
-  promptInput.style.height = Math.min(promptInput.scrollHeight, 160) + 'px';
+  promptInput.style.height = Math.min(promptInput.scrollHeight, 240) + 'px';
+  const inputCard = promptInput.closest('.input-card');
+  if (inputCard) inputCard.classList.toggle('has-text', promptInput.value.trim().length > 0);
 }
 
 // ==========================================================================
@@ -1768,61 +2061,194 @@ function renderModelDropdown() {
   if (!dynamicModelList) return;
   dynamicModelList.innerHTML = '';
 
-  availableModelsList.forEach(m => {
-    const isSelected = selectedModel === m.id || (m.id.includes('sonnet') && selectedModel === 'sonnet') || (m.id.includes('haiku') && selectedModel === 'haiku') || (m.id.includes('opus') && selectedModel === 'opus');
-    const item = document.createElement('div');
-    item.className = `dropdown-item model-option ${isSelected ? 'selected' : ''}`;
-    item.setAttribute('role', 'option');
-    item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
-    item.setAttribute('data-model', m.id);
-    item.setAttribute('data-name', m.name);
-    item.setAttribute('data-tag', m.tag || 'IA');
+  const mainModels = availableModelsList.filter(m => !m.legacy);
+  const legacyModels = availableModelsList.filter(m => m.legacy);
 
-    item.innerHTML = `
-      <div class="model-option-main">
-        <span class="model-option-name">${escapeHtml(m.name)}</span>
-        <span class="model-option-tag">${escapeHtml(m.tag || 'IA')}</span>
-      </div>
-      <div class="model-option-sub" style="display:flex; justify-content:space-between; align-items:center;">
-        <span>${escapeHtml(m.desc || m.id)}</span>
-        ${m.isCustom ? `<button type="button" class="btn-del-model" data-id="${escapeHtml(m.id)}" title="Eliminar modelo" style="background:none;border:none;color:var(--text-subtle);cursor:pointer;padding:2px 4px;margin-left:6px;"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>` : ''}
-      </div>
-    `;
+  mainModels.forEach(m => dynamicModelList.appendChild(buildModelOption(m)));
 
-    item.addEventListener('click', (e) => {
-      const delBtn = e.target.closest('.btn-del-model');
-      if (delBtn) {
-        e.stopPropagation();
-        deleteCustomModel(delBtn.getAttribute('data-id'));
-        return;
-      }
-      e.stopPropagation();
-      setModel(m.id, m.name, m.tag);
-      closeAllDropdowns();
-    });
+  // Submenú "Más modelos" con las generaciones anteriores
+  const moreSlot = document.getElementById('more-models-slot');
+  if (moreSlot) {
+    moreSlot.innerHTML = '';
+    if (legacyModels.length > 0) {
+      const more = document.createElement('div');
+      more.className = 'submenu more-models';
+      more.innerHTML = `
+        <button type="button" class="dropdown-item submenu-trigger" aria-haspopup="listbox" aria-expanded="false">
+          <span class="submenu-label">Más modelos</span>
+          <svg class="submenu-chevron"><use href="#i-chevron-right"/></svg>
+        </button>
+        <div class="submenu-flyout" role="listbox"></div>
+      `;
+      const flyout = more.querySelector('.submenu-flyout');
+      legacyModels.forEach(m => flyout.appendChild(buildModelOption(m, { compact: true })));
+      bindSubmenu(more);
+      moreSlot.appendChild(more);
+    }
+  }
 
-    dynamicModelList.appendChild(item);
-  });
-
-  const currentInfo = getModelInfo(selectedModel);
-  if (currentModelName) currentModelName.textContent = currentInfo.name;
-  if (currentModelTag) currentModelTag.textContent = currentInfo.tag || 'IA';
+  updateModelTrigger();
+  refreshModelSelectionMarks();
+  if (shellReady) renderEffortOptions();
 }
 
-function setModel(modelId, modelName, modelTag) {
-  selectedModel = modelId;
-  localStorage.setItem('claudezer0_model', modelId);
-  const info = getModelInfo(modelId);
-  const displayName = modelName || info.name || modelId;
-  const displayTag = modelTag || info.tag || 'IA';
-  if (currentModelName) currentModelName.textContent = displayName;
-  if (currentModelTag) currentModelTag.textContent = displayTag;
+function buildModelOption(m, { compact = false } = {}) {
+  const isSelected = selectedModel === m.id;
+  const isUserModel = m.custom && m.source !== 'anthropic';
+  const item = document.createElement('div');
+  item.className = `dropdown-item model-option${compact ? ' model-option-compact' : ''}${isSelected ? ' selected' : ''}`;
+  item.setAttribute('role', 'option');
+  item.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+  item.setAttribute('data-model', m.id);
 
+  const deleteBtn = isUserModel
+    ? `<button type="button" class="btn-del-model" data-id="${escapeHtml(m.id)}" title="Eliminar modelo" aria-label="Eliminar modelo"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>`
+    : '';
+
+  const multiplier = costMultiplier(m);
+  const subscription = isSubscriptionBilling();
+  const priceLine = subscription
+    ? ''
+    : (m.pricing ? `${formatPrice(m.pricing.input)} entrada · ${formatPrice(m.pricing.output)} salida / MTok` : 'Precio no disponible');
+  const chipTitle = subscription
+    ? `Consumo relativo según la tarifa del modelo: cuanto más alto, antes gastas el límite de uso de ${planLabel()}`
+    : 'Gasto relativo al modelo más barato';
+  item.title = m.pricing && !subscription
+    ?`${m.name}\nEntrada: ${formatPrice(m.pricing.input)} / MTok\nSalida: ${formatPrice(m.pricing.output)} / MTok${m.pricing.cacheRead != null ? `\nCaché (lectura): ${formatPrice(m.pricing.cacheRead)} / MTok` : ''}`
+    : m.name;
+
+  item.innerHTML = `
+    <div class="item-content">
+      <div class="item-title-row">
+        <span class="item-title">${escapeHtml(shortModelName(m.name))}</span>
+        ${multiplier ? `<span class="cost-chip" title="${escapeHtml(chipTitle)}">${multiplier}</span>` : ''}
+      </div>
+      ${compact ? '' : `<div class="item-desc">${escapeHtml(m.desc || m.id)}</div>${priceLine ? `<div class="item-price">${escapeHtml(priceLine)}</div>` : ''}`}
+    </div>
+    ${deleteBtn}
+    <svg class="item-check"><use href="#i-check"/></svg>
+  `;
+
+  item.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const delBtn = e.target.closest('.btn-del-model');
+    if (delBtn) {
+      deleteCustomModel(delBtn.getAttribute('data-id'));
+      return;
+    }
+    setModel(m.id, m.name, m.tag);
+    closeAllDropdowns();
+  });
+
+  return item;
+}
+
+function shortModelName(name) {
+  return String(name || '').replace(/^Claude\s+/i, '');
+}
+
+// Niveles de esfuerzo que admite un modelo, según las capacidades que publica la API
+function effortLevelsFor(modelId) {
+  const info = availableModelsList.find(m => m.id === modelId);
+  if (info && Array.isArray(info.effortLevels)) return info.effortLevels;
+  // Modelos añadidos a mano (sin datos de la API): Haiku no admite esfuerzo
+  return /haiku/i.test(String(modelId || '')) ? [] : ['low', 'medium', 'high', 'xhigh', 'max'];
+}
+
+function modelSupportsEffort(modelId) {
+  return effortLevelsFor(modelId).length > 0;
+}
+
+// Esfuerzo que se enviará realmente con el modelo actual (null = el predeterminado del modelo)
+function effectiveEffort() {
+  if (selectedEffort === 'auto') return null;
+  return effortLevelsFor(selectedModel).includes(selectedEffort) ? selectedEffort : null;
+}
+
+// ¿Se está usando una suscripción (Pro/Max) en lugar de una clave de API?
+// Con suscripción no se cobra por tokens: los importes en dólares serían solo una referencia.
+function isSubscriptionBilling() {
+  if (clientApiKey) return false;
+  return !!(serverAuthInfo && serverAuthInfo.loggedIn && serverAuthInfo.authMethod === 'claude.ai');
+}
+
+function planLabel() {
+  const plan = serverAuthInfo && serverAuthInfo.subscriptionType;
+  return plan ? plan.charAt(0).toUpperCase() + plan.slice(1).toLowerCase() : 'tu plan';
+}
+
+// Multiplicador de gasto respecto al modelo más barato (por precio de salida)
+function costMultiplier(model) {
+  if (!model || !model.pricing) return null;
+  const outputs = availableModelsList.map(m => m.pricing && m.pricing.output).filter(v => v > 0);
+  if (outputs.length === 0) return null;
+  const ratio = model.pricing.output / Math.min(...outputs);
+  return Number.isInteger(ratio) ? `×${ratio}` : `×${ratio.toFixed(1).replace(/\.0$/, '')}`;
+}
+
+function formatPrice(value) {
+  return `$${Number.isInteger(value) ? value : value.toFixed(2).replace(/0$/, '')}`;
+}
+
+function formatUsd(value) {
+  if (!value) return '$0';
+  if (value < 0.01) return `$${value.toFixed(4)}`;
+  if (value < 1) return `$${value.toFixed(3)}`;
+  return `$${value.toFixed(2)}`;
+}
+
+function formatTokens(n) {
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1).replace(/\.0$/, '')}k`;
+  return String(n);
+}
+
+// Coste de una respuesta, debajo del mensaje
+function appendCostFooter(row, cost) {
+  if (!row || !cost || row.querySelector('.msg-cost')) return;
+  const entries = Object.entries(cost.byModel || {});
+  const tokens = entries.reduce((s, [, u]) => s + u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens, 0);
+  const detail = entries
+    .map(([id, u]) => `${shortModelName(getModelInfo(id).name || id)}: ${formatUsd(u.costUSD)} (${formatTokens(u.outputTokens)} de salida)`)
+    .join('\n');
+  const footer = document.createElement('div');
+  footer.className = 'msg-cost';
+  if (isSubscriptionBilling()) {
+    footer.title = `Usa tu suscripción ${planLabel()}: no se cobra por tokens.\n${detail}\n(Importe solo orientativo: lo que costaría en la API)`;
+    footer.textContent = `${formatTokens(tokens)} tokens`;
+  } else {
+    footer.title = `${detail}\nCalculado por Claude Code a precio de tarifa de la API`;
+    footer.textContent = `${formatUsd(cost.totalCostUSD)} · ${formatTokens(tokens)} tokens`;
+  }
+  row.appendChild(footer);
+}
+
+function updateModelTrigger() {
+  const info = getModelInfo(selectedModel);
+  if (currentModelName) currentModelName.textContent = shortModelName(info.name || selectedModel);
+  if (currentModelTag) {
+    currentModelTag.textContent = modelSupportsEffort(selectedModel) ? effortLabel(effectiveEffort() || 'auto') : '';
+  }
+  const effortSubmenu = document.getElementById('effort-submenu');
+  if (effortSubmenu) effortSubmenu.hidden = !modelSupportsEffort(selectedModel);
+}
+
+function refreshModelSelectionMarks() {
   document.querySelectorAll('.model-option').forEach(opt => {
-    const isMatch = opt.getAttribute('data-model') === modelId;
+    const isMatch = opt.getAttribute('data-model') === selectedModel;
     opt.classList.toggle('selected', isMatch);
     opt.setAttribute('aria-selected', isMatch ? 'true' : 'false');
   });
+  const more = document.querySelector('.more-models');
+  if (more) more.classList.toggle('has-selected', !!more.querySelector('.model-option.selected'));
+}
+
+function setModel(modelId) {
+  selectedModel = modelId;
+  writePref('claudezer0_model', modelId);
+  updateModelTrigger();
+  refreshModelSelectionMarks();
+  renderEffortOptions();
 }
 
 function openCustomModelModal() {
@@ -1853,7 +2279,7 @@ async function handleSaveCustomModel() {
   if (!id) {
     customModelStatus.style.display = 'flex';
     customModelStatus.className = 'key-status-box error';
-    customModelStatus.textContent = 'El ID del modelo es obligatorio (ej. claude-3-7-sonnet-20250219).';
+    customModelStatus.textContent = 'El ID del modelo es obligatorio (ej. claude-opus-5-5).';
     return;
   }
 
@@ -1894,7 +2320,7 @@ async function deleteCustomModel(id) {
     const data = await res.json();
     if (data.success) {
       if (selectedModel === id) {
-        selectedModel = 'sonnet';
+        selectedModel = DEFAULT_MODEL_ID;
         localStorage.setItem('claudezer0_model', selectedModel);
       }
       await loadModels();
@@ -1916,8 +2342,9 @@ async function handleSyncModels() {
     const res = await authFetch('/api/models/sync', { method: 'POST' });
     const data = await res.json();
     if (data.success) {
-      await loadModels();
-      showToast(`Modelos sincronizados (${data.models.length} disponibles)`);
+      applyModelsList(data.models, data.defaultModel);
+      const removedTxt = data.removedCount ? `, ${data.removedCount} antiguos eliminados` : '';
+      showToast(`Modelos sincronizados (${data.models.length} disponibles${removedTxt})`);
     } else {
       showToast(data.message || 'Error sincronizando modelos');
     }
@@ -2007,13 +2434,15 @@ function setupEventListeners() {
   });
 
   // Mobile sidebar
-  btnHamburger.addEventListener('click', openMobileSidebar);
+  btnHamburger.addEventListener('click', () => {
+    if (mobileQuery.matches) openMobileSidebar();
+    else setSidebarCollapsed(false);
+  });
   sidebarBackdrop.addEventListener('click', closeMobileSidebar);
 
   // Workspace modal
   btnOpenWorkspace.addEventListener('click', openWorkspaceModal);
   btnChangeWs.addEventListener('click', openWorkspaceModal);
-  inputWsPill.addEventListener('click', openWorkspaceModal);
   btnCloseModal.addEventListener('click', closeWorkspaceModal);
   btnCancelWorkspace.addEventListener('click', closeWorkspaceModal);
   btnSelectWorkspace.addEventListener('click', saveSelectedWorkspace);
@@ -2027,7 +2456,6 @@ function setupEventListeners() {
   // Modo & Key modal listeners
   if (btnModeIndicator) btnModeIndicator.addEventListener('click', openKeyModal);
   if (btnSidebarKey) btnSidebarKey.addEventListener('click', openKeyModal);
-  if (btnSidebarUserPill) btnSidebarUserPill.addEventListener('click', openKeyModal);
   if (btnCloseKeyModal) btnCloseKeyModal.addEventListener('click', closeKeyModal);
   if (btnCancelKeyModal) btnCancelKeyModal.addEventListener('click', closeKeyModal);
   if (btnSaveKeyModal) btnSaveKeyModal.addEventListener('click', handleSaveKey);
@@ -2047,7 +2475,7 @@ function setupEventListeners() {
 }
 
 function initModelAndMode() {
-  const rawModel = localStorage.getItem('claudezer0_model') || 'sonnet';
+  const rawModel = sanitizeStoredModel(localStorage.getItem('claudezer0_model'));
   const modelInfo = getModelInfo(rawModel);
   setModel(modelInfo.id, modelInfo.name, modelInfo.tag);
   renderModelDropdown();
@@ -2076,10 +2504,11 @@ function setPermissionMode(modeValue, modeIcon, modeLabel) {
 }
 
 function closeAllDropdowns() {
-  if (dropdownModel) dropdownModel.classList.remove('open');
-  if (dropdownMode) dropdownMode.classList.remove('open');
-  if (btnModelTrigger) btnModelTrigger.setAttribute('aria-expanded', 'false');
-  if (btnModeTrigger) btnModeTrigger.setAttribute('aria-expanded', 'false');
+  document.querySelectorAll('.custom-dropdown.open').forEach(dd => {
+    dd.classList.remove('open');
+    dd.querySelector('[aria-expanded]')?.setAttribute('aria-expanded', 'false');
+  });
+  document.querySelectorAll('.submenu.open').forEach(el => el.classList.remove('open'));
 }
 
 function setupDropdowns() {
@@ -2091,6 +2520,7 @@ function setupDropdowns() {
       if (willOpen) {
         dropdownModel.classList.add('open');
         btnModelTrigger.setAttribute('aria-expanded', 'true');
+        placeDropdownMenu(dropdownModel);
       }
     });
   }
@@ -2103,6 +2533,7 @@ function setupDropdowns() {
       if (willOpen) {
         dropdownMode.classList.add('open');
         btnModeTrigger.setAttribute('aria-expanded', 'true');
+        placeDropdownMenu(dropdownMode);
       }
     });
   }
@@ -2128,6 +2559,910 @@ function setupDropdowns() {
     if (e.key === 'Escape') {
       closeAllDropdowns();
       hideSlashPopup();
+    }
+  });
+}
+
+// ==========================================================================
+// 10. Interfaz: inicio/conversación, incógnito, personalización y menús
+// ==========================================================================
+const EFFORT_OPTIONS = [
+  { value: 'auto', label: 'Auto', desc: 'El modelo decide cuánto pensar' },
+  { value: 'low', label: 'Bajo', desc: 'Más rápido, para tareas sencillas' },
+  { value: 'medium', label: 'Medio', desc: 'Equilibrio entre rapidez y profundidad' },
+  { value: 'high', label: 'Alto', desc: 'Razona más a fondo' },
+  { value: 'xhigh', label: 'Muy alto', desc: 'Para problemas complejos' },
+  { value: 'max', label: 'Máximo', desc: 'Todo el razonamiento posible' }
+];
+
+const OUTPUT_STYLE_LABELS = {
+  default: 'Estilo',
+  Explanatory: 'Explicativo',
+  Learning: 'Aprendizaje'
+};
+
+const mobileQuery = window.matchMedia('(max-width: 768px)');
+const darkSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+let shellReady = false;
+
+function effortLabel(value) {
+  return (EFFORT_OPTIONS.find(o => o.value === value) || EFFORT_OPTIONS[0]).label;
+}
+
+function shortPathName(p) {
+  const parts = String(p || '').split(/[\\/]/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : String(p || '');
+}
+
+// --- Inicio vs. conversación ------------------------------------------------
+function syncEmptyState() {
+  const empty = emptyState.style.display !== 'none';
+  mainApp.classList.toggle('main-app-empty', empty);
+  mainApp.classList.toggle('is-chat', !empty);
+  promptInput.placeholder = empty ? '¿En qué puedo ayudarte hoy?' : 'Responde a Claude…';
+  updateTopTitle();
+}
+
+function updateTopTitle() {
+  if (!topChatTitle) return;
+  if (incognitoMode) {
+    topChatTitle.innerHTML = '<span class="incognito-chip"><svg><use href="#i-ghost"/></svg>Chat incógnito</span>';
+    return;
+  }
+  const empty = emptyState.style.display !== 'none';
+  const session = lastSessionsList.find(s => s.id === activeSessionId);
+  topChatTitle.textContent = empty ? '' : (session ? session.title : '');
+}
+
+function updateGreeting() {
+  const greeting = document.getElementById('greeting-text');
+  if (!greeting) return;
+  const name = readPref('claudezer0_display_name', '').trim();
+  if (incognitoMode) {
+    greeting.textContent = 'Chat incógnito';
+  } else {
+    greeting.textContent = name ? `¿En qué estamos pensando, ${name}?` : '¿En qué estamos pensando?';
+  }
+}
+
+function updateUserIdentity() {
+  const name = readPref('claudezer0_display_name', '').trim() || currentUsername || 'Usuario';
+  if (userDisplayName) userDisplayName.textContent = name;
+  if (userAvatarLetter) {
+    const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w.charAt(0)).join('');
+    userAvatarLetter.textContent = (initials || 'U').toUpperCase();
+  }
+  const email = document.getElementById('user-menu-email');
+  if (email) email.textContent = serverAuthInfo && serverAuthInfo.email ? serverAuthInfo.email : '';
+}
+
+// --- Incógnito --------------------------------------------------------------
+function discardIncognitoSession({ keepalive = false } = {}) {
+  if (!incognitoSessionId) return;
+  const id = incognitoSessionId;
+  incognitoSessionId = null;
+  if (activeSessionId === id) activeSessionId = null;
+  fetch(`/api/sessions/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    keepalive,
+    headers: { 'Authorization': `Bearer ${authToken}` }
+  }).catch(() => {});
+}
+
+function setIncognito(on) {
+  if (on === incognitoMode) return;
+  if (!on) discardIncognitoSession();
+  incognitoMode = on;
+  mainApp.classList.toggle('incognito', on);
+  const btn = document.getElementById('btn-incognito');
+  if (btn) {
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.title = on ? 'Salir del chat incógnito' : 'Chat incógnito';
+  }
+  const plusLabel = document.getElementById('plus-incognito-label');
+  if (plusLabel) plusLabel.textContent = on ? 'Salir del chat incógnito' : 'Chat incógnito';
+  newChat();
+  updateGreeting();
+  updateTopTitle();
+  if (on) showToast('Chat incógnito: no se guardará en Recientes');
+}
+
+// --- Tema, acento y fuente --------------------------------------------------
+function resolveTheme(choice) {
+  if (choice === 'system') return darkSchemeQuery.matches ? 'dark' : 'light';
+  return choice === 'dark' ? 'dark' : 'light';
+}
+
+function applyTheme(choice, { persist = true } = {}) {
+  if (persist) writePref('claudezer0_theme', choice);
+  const resolved = resolveTheme(choice);
+  document.documentElement.dataset.theme = resolved;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', resolved === 'dark' ? '#262624' : '#faf9f5');
+  document.querySelectorAll('[data-theme-choice]').forEach(b => b.classList.toggle('active', b.dataset.themeChoice === choice));
+  document.querySelectorAll('#pz-theme button').forEach(b => b.classList.toggle('active', b.dataset.value === choice));
+}
+
+function applyAccent(value, { persist = true } = {}) {
+  if (persist) writePref('claudezer0_accent', value);
+  document.documentElement.dataset.accent = value;
+  document.querySelectorAll('#pz-accent button').forEach(b => b.classList.toggle('active', b.dataset.value === value));
+}
+
+function applyChatFont(value, { persist = true } = {}) {
+  if (persist) writePref('claudezer0_chat_font', value);
+  document.documentElement.dataset.chatFont = value;
+  document.querySelectorAll('#pz-font button').forEach(b => b.classList.toggle('active', b.dataset.value === value));
+}
+
+// --- Modal Personalizar -----------------------------------------------------
+let personalizeSnapshot = null;
+
+function openPersonalizeModal() {
+  closeAllDropdowns();
+  closeMobileSidebar();
+  personalizeSnapshot = {
+    theme: readPref('claudezer0_theme', 'light'),
+    accent: readPref('claudezer0_accent', 'terracotta'),
+    font: readPref('claudezer0_chat_font', 'serif')
+  };
+  document.getElementById('pz-name').value = readPref('claudezer0_display_name', '');
+  document.getElementById('pz-instructions').value = readPref('claudezer0_custom_instructions', '');
+  applyTheme(personalizeSnapshot.theme, { persist: false });
+  applyAccent(personalizeSnapshot.accent, { persist: false });
+  applyChatFont(personalizeSnapshot.font, { persist: false });
+  document.getElementById('personalize-modal').style.display = 'flex';
+  document.getElementById('pz-name').focus();
+}
+
+function closePersonalizeModal({ revert = true } = {}) {
+  const modal = document.getElementById('personalize-modal');
+  if (!modal || modal.style.display === 'none') return;
+  if (revert && personalizeSnapshot) {
+    applyTheme(personalizeSnapshot.theme, { persist: false });
+    applyAccent(personalizeSnapshot.accent, { persist: false });
+    applyChatFont(personalizeSnapshot.font, { persist: false });
+  }
+  personalizeSnapshot = null;
+  modal.style.display = 'none';
+}
+
+function savePersonalization() {
+  const pick = (groupId, fallback) => {
+    const active = document.querySelector(`#${groupId} button.active`);
+    return active ? active.dataset.value : fallback;
+  };
+  writePref('claudezer0_display_name', document.getElementById('pz-name').value.trim());
+  writePref('claudezer0_custom_instructions', document.getElementById('pz-instructions').value.trim());
+  applyTheme(pick('pz-theme', 'light'));
+  applyAccent(pick('pz-accent', 'terracotta'));
+  applyChatFont(pick('pz-font', 'serif'));
+  closePersonalizeModal({ revert: false });
+  updateGreeting();
+  updateUserIdentity();
+  showToast('Preferencias guardadas');
+}
+
+// --- Submenús y desplegables ------------------------------------------------
+function bindSubmenu(submenu) {
+  const trigger = submenu.querySelector('.submenu-trigger');
+  const setOpen = (open) => {
+    submenu.classList.toggle('open', open);
+    trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) placeSubmenuFlyout(submenu);
+  };
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const willOpen = !submenu.classList.contains('open');
+    submenu.parentElement.closest('.dropdown-menu')?.querySelectorAll('.submenu.open').forEach(s => s !== submenu && s.classList.remove('open'));
+    setOpen(willOpen);
+  });
+  // En escritorio se abren al pasar el ratón, como en claude.ai. Al salir se espera un momento
+  // antes de cerrar, para que dé tiempo a llevar el ratón hasta el submenú.
+  const canHover = window.matchMedia('(hover: hover) and (min-width: 769px)');
+  let closeTimer = null;
+  submenu.addEventListener('mouseenter', () => {
+    if (!canHover.matches) return;
+    clearTimeout(closeTimer);
+    setOpen(true);
+  });
+  submenu.addEventListener('mouseleave', () => {
+    if (!canHover.matches) return;
+    clearTimeout(closeTimer);
+    closeTimer = setTimeout(() => setOpen(false), 300);
+  });
+}
+
+function bindDropdown(dropdownId, triggerId, onOpen) {
+  const dropdown = document.getElementById(dropdownId);
+  const trigger = document.getElementById(triggerId);
+  if (!dropdown || !trigger) return;
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const willOpen = !dropdown.classList.contains('open');
+    closeAllDropdowns();
+    if (willOpen) {
+      if (onOpen) onOpen();
+      dropdown.classList.add('open');
+      trigger.setAttribute('aria-expanded', 'true');
+      placeDropdownMenu(dropdown);
+    }
+  });
+}
+
+// Abrir el menú hacia arriba o hacia abajo según el espacio disponible en pantalla
+function placeDropdownMenu(dropdown) {
+  const menu = dropdown.querySelector(':scope > .dropdown-menu');
+  if (!menu) return;
+  menu.classList.remove('flip-up', 'flip-down');
+  const anchor = dropdown.getBoundingClientRect();
+  const needed = menu.offsetHeight + 12;
+  const spaceBelow = window.innerHeight - anchor.bottom;
+  const spaceAbove = anchor.top;
+  const opensDown = menu.getBoundingClientRect().top >= anchor.top;
+  if (opensDown && spaceBelow < needed && spaceAbove > spaceBelow) menu.classList.add('flip-up');
+  if (!opensDown && spaceAbove < needed && spaceBelow > spaceAbove) menu.classList.add('flip-down');
+}
+
+// Submenú lateral: alinearlo por arriba o por abajo para que no se salga de la pantalla
+function placeSubmenuFlyout(submenu) {
+  const flyout = submenu.querySelector(':scope > .submenu-flyout');
+  if (!flyout || mobileQuery.matches) return;
+  flyout.classList.remove('flyout-up');
+  const rect = flyout.getBoundingClientRect();
+  if (rect.bottom > window.innerHeight - 8) flyout.classList.add('flyout-up');
+}
+
+function renderEffortOptions() {
+  const list = document.getElementById('effort-options');
+  if (!list) return;
+  list.innerHTML = '';
+  // Solo los niveles que admite el modelo elegido (Auto siempre está)
+  const supported = effortLevelsFor(selectedModel);
+  const current = effectiveEffort() || 'auto';
+  EFFORT_OPTIONS.filter(opt => opt.value === 'auto' || supported.includes(opt.value)).forEach(opt => {
+    const item = document.createElement('div');
+    item.className = `dropdown-item${opt.value === current ? ' selected' : ''}`;
+    item.setAttribute('role', 'option');
+    item.innerHTML = `
+      <div class="item-content">
+        <div class="item-title">${opt.label}</div>
+        <div class="item-desc">${opt.desc}</div>
+      </div>
+      <svg class="item-check"><use href="#i-check"/></svg>
+    `;
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectedEffort = opt.value;
+      writePref('claudezer0_effort', opt.value);
+      renderEffortOptions();
+      updateModelTrigger();
+      closeAllDropdowns();
+    });
+    list.appendChild(item);
+  });
+  const currentLabel = document.getElementById('effort-current-label');
+  if (currentLabel) currentLabel.textContent = effortLabel(current);
+}
+
+function setOutputStyle(value) {
+  selectedOutputStyle = OUTPUT_STYLE_LABELS[value] ? value : 'default';
+  writePref('claudezer0_output_style', selectedOutputStyle);
+  const label = document.getElementById('current-output-label');
+  if (label) label.textContent = OUTPUT_STYLE_LABELS[selectedOutputStyle];
+  document.querySelectorAll('.output-option').forEach(opt => {
+    opt.classList.toggle('selected', opt.dataset.value === selectedOutputStyle);
+  });
+}
+
+// --- Proyecto (carpeta de trabajo) -------------------------------------------
+function renderProjectMenu() {
+  const list = document.getElementById('project-recent-list');
+  if (!list) return;
+  const seen = new Set();
+  const folders = [currentWorkspace, ...lastSessionsList.map(s => s.workspace)]
+    .filter(p => p && !seen.has(p.toLowerCase()) && seen.add(p.toLowerCase()))
+    .slice(0, 6);
+
+  list.innerHTML = '';
+  if (folders.length === 0) {
+    list.innerHTML = '<div class="project-recent-empty">Aún no hay carpetas recientes</div>';
+    return;
+  }
+  folders.forEach(folder => {
+    const row = document.createElement('div');
+    row.className = `dropdown-item project-row${folder === currentWorkspace ? ' selected' : ''}`;
+    row.innerHTML = `
+      <div class="item-content">
+        <div class="item-title">${escapeHtml(shortPathName(folder))}</div>
+        <span class="project-path" title="${escapeHtml(folder)}">${escapeHtml(folder)}</span>
+      </div>
+      <svg class="item-check"><use href="#i-check"/></svg>
+    `;
+    row.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeAllDropdowns();
+      if (folder !== currentWorkspace) switchWorkspaceQuiet(folder);
+    });
+    list.appendChild(row);
+  });
+}
+
+async function switchWorkspaceQuiet(folder) {
+  try {
+    const res = await authFetch('/api/workspace', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: folder })
+    });
+    const data = await res.json();
+    if (data.success) {
+      updateWorkspaceUI(data.workspace);
+      showToast(`Proyecto: ${shortPathName(data.workspace)}`);
+    } else {
+      showToast(data.error || 'No se pudo cambiar de carpeta');
+    }
+  } catch (err) {
+    showToast('No se pudo cambiar de carpeta');
+  }
+}
+
+// --- Uso y gasto ---------------------------------------------------------------
+async function openUsageModal() {
+  closeAllDropdowns();
+  closeMobileSidebar();
+  const modal = document.getElementById('usage-modal');
+  const resetBtn = document.getElementById('btn-reset-usage');
+  if (resetBtn) {
+    resetBtn.textContent = 'Poner a cero';
+    delete resetBtn.dataset.confirm;
+  }
+  modal.style.display = 'flex';
+  loadPlanLimits();
+  try {
+    const res = await authFetch('/api/usage');
+    const data = await res.json();
+    renderUsage(data.usage, data.pricing);
+  } catch (err) {
+    document.getElementById('usage-body').innerHTML = '<div class="usage-empty">No se pudo cargar el uso</div>';
+  }
+}
+
+function closeUsageModal() {
+  const modal = document.getElementById('usage-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function renderUsage(usage, pricing) {
+  const body = document.getElementById('usage-body');
+  const rows = Object.entries(usage.models || {}).sort((a, b) => b[1].costUSD - a[1].costUSD);
+  const maxCost = rows.length ? rows[0][1].costUSD || 1 : 1;
+  const since = new Date(usage.since).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+  const pricingDate = pricing && pricing.fetchedAt
+    ? new Date(pricing.fetchedAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })
+    : null;
+
+  const tableRows = rows.map(([id, u]) => {
+    const info = getModelInfo(id);
+    const tokens = u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens;
+    const multiplier = costMultiplier(info);
+    return `
+      <tr>
+        <td>
+          ${escapeHtml(shortModelName(info.name || id))}
+          ${multiplier ? `<span class="cost-chip">${multiplier}</span>` : ''}
+          <span class="usage-bar" style="width:${Math.max(4, Math.round((u.costUSD / maxCost) * 100))}%"></span>
+        </td>
+        <td>${u.responses}</td>
+        <td title="Entrada ${formatTokens(u.inputTokens)} · Salida ${formatTokens(u.outputTokens)} · Caché ${formatTokens(u.cacheReadTokens + u.cacheWriteTokens)}">${formatTokens(tokens)}</td>
+        <td class="${isSubscriptionBilling() ? 'usage-ref' : ''}">${formatUsd(u.costUSD)}</td>
+      </tr>`;
+  }).join('');
+
+  const subscription = isSubscriptionBilling();
+  const totalTokens = rows.reduce((s, [, u]) => s + u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens, 0);
+  const pricingNote = pricingDate ? ` Tarifas oficiales actualizadas el ${escapeHtml(pricingDate)}.` : '';
+  const note = subscription
+    ? `<strong>Estás usando tu suscripción ${escapeHtml(planLabel())}, no la API</strong>: no hay ninguna clave de API configurada,
+       así que no se te cobra por tokens. Cada mensaje gasta tu límite de uso del plan, igual que en claude.ai.
+       La columna «Equiv. API» es solo una referencia de lo que costaría en la API, y el multiplicador (×) indica
+       qué modelos gastan el límite más deprisa.${pricingNote}`
+    : `Estás usando una clave de API: estos importes se facturan a esa cuenta. Los calcula Claude Code a precio de tarifa.
+       El multiplicador (×) compara el precio de salida de cada modelo con el del más barato.${pricingNote}`;
+
+  body.innerHTML = `
+    <div class="usage-summary">
+      <span class="usage-total">${subscription ? `${formatTokens(totalTokens)} tokens` : formatUsd(usage.totalCostUSD)}</span>
+      <span class="usage-total-label">desde el ${escapeHtml(since)}</span>
+    </div>
+    <div class="usage-table-wrap">
+      ${rows.length ? `
+        <table class="usage-table">
+          <thead><tr><th>Modelo</th><th>Respuestas</th><th>Tokens</th><th>${subscription ? 'Equiv. API' : 'Coste'}</th></tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>` : '<div class="usage-empty">Todavía no hay respuestas registradas</div>'}
+    </div>
+    <p class="usage-note">${note}</p>
+  `;
+}
+
+// --- Seguridad ---------------------------------------------------------------
+function openSecurityModal() {
+  closeAllDropdowns();
+  closeMobileSidebar();
+  const form = document.getElementById('security-password-form');
+  form.reset();
+  document.getElementById('security-user').value = currentUsername;
+  document.getElementById('security-status').style.display = 'none';
+  const btn = document.getElementById('btn-logout-all');
+  btn.textContent = 'Cerrar sesión en todos los dispositivos';
+  delete btn.dataset.confirm;
+  document.getElementById('security-modal').style.display = 'flex';
+}
+
+function closeSecurityModal() {
+  document.getElementById('security-modal').style.display = 'none';
+}
+
+function setSecurityStatus(ok, message) {
+  const box = document.getElementById('security-status');
+  box.className = `key-status-box ${ok ? 'success' : 'error'}`;
+  box.textContent = message;
+  box.style.display = 'flex';
+}
+
+async function handleSecurityPasswordSubmit(e) {
+  e.preventDefault();
+  const current = document.getElementById('security-current').value;
+  const next = document.getElementById('security-new').value;
+  if (next !== document.getElementById('security-confirm').value) {
+    setSecurityStatus(false, 'Las contraseñas nuevas no coinciden');
+    return;
+  }
+  try {
+    const data = await requestPasswordChange(current, next);
+    if (data.success) {
+      e.target.reset();
+      setSecurityStatus(true, 'Contraseña cambiada. Se ha cerrado la sesión en el resto de dispositivos.');
+    } else {
+      setSecurityStatus(false, data.message || 'No se pudo cambiar la contraseña');
+    }
+  } catch (err) {
+    setSecurityStatus(false, 'Error al conectar con el servidor');
+  }
+}
+
+async function handleLogoutAll() {
+  const btn = document.getElementById('btn-logout-all');
+  if (!btn.dataset.confirm) {
+    btn.dataset.confirm = '1';
+    btn.textContent = '¿Seguro? Pulsa otra vez';
+    return;
+  }
+  try {
+    await authFetch('/api/auth/logout-all', { method: 'POST' });
+  } catch (err) {}
+  closeSecurityModal();
+  clearAuthToken();
+  showLogin();
+}
+
+// --- Límites del plan (suscripción) ------------------------------------------
+let planLimitsData = null;
+let planLimitsLoading = false;
+
+async function loadPlanLimits(force = false) {
+  if (planLimitsLoading) return;
+  planLimitsLoading = true;
+  document.querySelector('#plan-limits .plan-refresh')?.classList.add('is-loading');
+  try {
+    const res = await authFetch(`/api/usage/plan${force ? '?refresh=1' : ''}`);
+    planLimitsData = await res.json();
+  } catch (err) {
+    planLimitsData = { success: false, message: 'No se pudieron consultar los límites del plan' };
+  } finally {
+    planLimitsLoading = false;
+  }
+  onPlanLimitsUpdated();
+}
+
+function onPlanLimitsUpdated() {
+  renderPlanLimits();
+  renderPlanMini();
+  renderPlanChip();
+  notifyPlanThresholds();
+}
+
+const PLAN_WARN_PERCENT = 80;
+const PLAN_CRITICAL_PERCENT = 90;
+const PLAN_WINDOW_LABELS = { session: 'la sesión actual', weekly: 'el límite semanal' };
+
+// Ventana más apurada (sesión o semana), si hay datos de suscripción
+function tightestPlanWindow() {
+  const data = planLimitsData;
+  if (clientApiKey || !data || !data.success) return null;
+  return ['session', 'weekly']
+    .filter(key => data[key])
+    .map(key => ({ key, ...data[key] }))
+    .sort((a, b) => b.percent - a.percent)[0] || null;
+}
+
+function renderPlanChip() {
+  const chip = document.getElementById('plan-chip');
+  if (!chip) return;
+  const win = tightestPlanWindow();
+  if (!win || win.percent < PLAN_WARN_PERCENT) {
+    chip.hidden = true;
+    return;
+  }
+  const label = win.key === 'session' ? 'Sesión' : 'Semana';
+  const reset = formatPlanReset(win.resetsAt).replace(/^Se restablece /, '');
+  chip.className = `chip-btn plan-chip ${win.percent >= PLAN_CRITICAL_PERCENT ? 'is-full' : 'is-warn'}`;
+  chip.innerHTML = `<span class="plan-chip-dot"></span>${label} ${Math.round(win.percent)}%${reset ? `<span class="plan-chip-reset"> · ${escapeHtml(reset)}</span>` : ''}`;
+  chip.hidden = false;
+}
+
+// Aviso en pantalla al cruzar el 80 % y el 100 %, una sola vez por ventana de uso
+function notifyPlanThresholds() {
+  const data = planLimitsData;
+  if (clientApiKey || !data || !data.success) return;
+  const seen = readJsonPref('claudezer0_plan_alerts');
+  let changed = false;
+  for (const key of ['session', 'weekly']) {
+    const win = data[key];
+    if (!win) continue;
+    const level = win.percent >= 100 ? 100 : win.percent >= PLAN_WARN_PERCENT ? PLAN_WARN_PERCENT : 0;
+    const prev = seen[key] && seen[key].resetsAt === win.resetsAt ? seen[key].level : 0;
+    if (level > prev) {
+      showToast(level >= 100
+        ? `Has alcanzado ${PLAN_WINDOW_LABELS[key]}. ${formatPlanReset(win.resetsAt)}`
+        : `Llevas el ${Math.round(win.percent)}% de ${PLAN_WINDOW_LABELS[key]}`);
+    }
+    if (level !== prev || !seen[key] || seen[key].resetsAt !== win.resetsAt) {
+      seen[key] = { resetsAt: win.resetsAt, level: Math.max(level, prev) };
+      changed = true;
+    }
+  }
+  if (changed) writePref('claudezer0_plan_alerts', JSON.stringify(seen));
+}
+
+function readJsonPref(key) {
+  try {
+    return JSON.parse(readPref(key, '{}')) || {};
+  } catch {
+    return {};
+  }
+}
+
+// --- Aviso antes de enviar con un modelo caro cuando queda poco margen ---
+let pendingPlanPrompt = null;
+
+function sonnetAlternative() {
+  return availableModelsList.find(m => m.id.includes('sonnet') && !m.legacy) || null;
+}
+
+function planWarningFor(modelId) {
+  const win = tightestPlanWindow();
+  if (!win || win.percent < PLAN_CRITICAL_PERCENT) return null;
+  if (!/opus|fable/i.test(modelId || '')) return null;
+  const sonnet = sonnetAlternative();
+  if (!sonnet) return null;
+  if (readPref('claudezer0_plan_alert_dismissed', '') === `${win.key}:${win.resetsAt}`) return null;
+  return { win, sonnet };
+}
+
+function showPlanAlert(prompt, warning) {
+  pendingPlanPrompt = prompt;
+  const alertBox = document.getElementById('plan-alert');
+  const model = getModelInfo(selectedModel);
+  const modelName = shortModelName(model.name || selectedModel);
+  const sonnetName = shortModelName(warning.sonnet.name);
+  const ratio = model.pricing && warning.sonnet.pricing && warning.sonnet.pricing.output
+    ? model.pricing.output / warning.sonnet.pricing.output
+    : null;
+  const ratioText = ratio && ratio > 1.05
+    ? ` ${escapeHtml(modelName)} gasta unas ${ratio.toFixed(1).replace(/\.0$/, '').replace('.', ',')} veces más que ${escapeHtml(sonnetName)}.`
+    : '';
+
+  alertBox.innerHTML = `
+    <div class="plan-alert-text">
+      <strong>Llevas el ${Math.round(warning.win.percent)}% de ${PLAN_WINDOW_LABELS[warning.win.key]}.</strong>${ratioText}
+      <span class="plan-alert-reset">${escapeHtml(formatPlanReset(warning.win.resetsAt))}</span>
+    </div>
+    <div class="plan-alert-actions">
+      <button type="button" class="btn-text" data-plan-action="send">Enviar igualmente</button>
+      <button type="button" class="btn-primary-terracotta" data-plan-action="switch">Cambiar a ${escapeHtml(sonnetName)}</button>
+    </div>`;
+  alertBox.dataset.window = `${warning.win.key}:${warning.win.resetsAt}`;
+  alertBox.dataset.sonnet = warning.sonnet.id;
+  alertBox.hidden = false;
+}
+
+function hidePlanAlert() {
+  const alertBox = document.getElementById('plan-alert');
+  if (alertBox) alertBox.hidden = true;
+  pendingPlanPrompt = null;
+}
+
+function handlePlanAlertClick(e) {
+  const action = e.target.closest('[data-plan-action]')?.dataset.planAction;
+  if (!action) return;
+  const alertBox = document.getElementById('plan-alert');
+  const prompt = pendingPlanPrompt;
+  if (action === 'send') {
+    // No volver a preguntar hasta el siguiente restablecimiento
+    writePref('claudezer0_plan_alert_dismissed', alertBox.dataset.window);
+  } else {
+    setModel(alertBox.dataset.sonnet);
+    showToast(`Modelo: ${shortModelName(getModelInfo(alertBox.dataset.sonnet).name || alertBox.dataset.sonnet)}`);
+  }
+  hidePlanAlert();
+  if (prompt) sendPrompt(prompt, { skipPlanCheck: true });
+}
+
+function formatPlanReset(iso) {
+  if (!iso) return '';
+  const date = new Date(iso);
+  const diffMin = Math.round((date - Date.now()) / 60000);
+  if (diffMin <= 0) return 'Se restablece en breve';
+  if (diffMin < 24 * 60) {
+    const h = Math.floor(diffMin / 60);
+    const m = diffMin % 60;
+    return `Se restablece en ${h ? `${h} h ` : ''}${m} min`;
+  }
+  const day = date.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', '');
+  const time = date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  return `Se restablece el ${day}, ${time}`;
+}
+
+function planMeterHtml(percent) {
+  const level = percent >= 90 ? ' is-full' : percent >= 70 ? ' is-warn' : '';
+  return `<span class="plan-meter${level}"><span style="width:${Math.round(percent)}%"></span></span>`;
+}
+
+function planRowHtml(label, win) {
+  return `
+    <div class="plan-row">
+      <div class="plan-row-label">${escapeHtml(label)}<span class="plan-row-reset">${escapeHtml(formatPlanReset(win.resetsAt))}</span></div>
+      ${planMeterHtml(win.percent)}
+      <span class="plan-row-value">${Math.round(win.percent)}% usado</span>
+    </div>`;
+}
+
+function renderPlanLimits() {
+  const box = document.getElementById('plan-limits');
+  if (!box) return;
+  const data = planLimitsData;
+  if (!data || data.notApplicable) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+
+  const head = `
+    <div class="plan-limits-head">
+      <span class="plan-limits-title">Límites de uso del plan</span>
+      <span class="plan-limits-plan">${escapeHtml(planLabel())}</span>
+    </div>`;
+
+  if (!data.success) {
+    box.innerHTML = `${head}<p class="plan-limits-error">${escapeHtml(data.message || 'No disponible')}</p>${planFootHtml(null)}`;
+    return;
+  }
+
+  const rows = [];
+  if (data.session) rows.push(planRowHtml('Sesión actual', data.session));
+  if (data.weekly || data.weeklyByModel.length) {
+    rows.push('<div class="plan-limits-sub">Límites semanales</div>');
+    if (data.weekly) rows.push(planRowHtml('Todos los modelos', data.weekly));
+    data.weeklyByModel.forEach(w => rows.push(planRowHtml(`Solo ${w.name}`, w)));
+  }
+
+  const breakdown = (data.breakdown || []).filter(b => b.percent > 0);
+  if (breakdown.length) {
+    rows.push(`<p class="plan-limits-error">Esta semana: ${breakdown.map(b => `${escapeHtml(b.name)} ${b.percent}%`).join(' · ')}</p>`);
+  }
+
+  const extra = data.extraUsage;
+  if (extra && typeof extra.used === 'number') {
+    const fmt = v => new Intl.NumberFormat('es-ES', { style: 'currency', currency: extra.currency }).format(v);
+    rows.push('<div class="plan-limits-sub">Créditos de uso</div>');
+    rows.push(`
+      <div class="plan-row">
+        <div class="plan-row-label">${fmt(extra.used)} gastados<span class="plan-row-reset">${extra.enabled ? 'Activados' : 'Desactivados'}${extra.limit ? ` · límite mensual ${fmt(extra.limit)}` : ''}</span></div>
+      </div>`);
+  }
+
+  box.innerHTML = head + rows.join('') + planFootHtml(data.fetchedAt);
+}
+
+function planFootHtml(fetchedAt) {
+  const when = fetchedAt
+    ? (Date.now() - fetchedAt < 60000 ? 'ahora mismo' : new Date(fetchedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }))
+    : '—';
+  return `
+    <div class="plan-limits-foot">
+      <span>Última actualización: ${when}</span>
+      <button type="button" class="plan-refresh" title="Actualizar" aria-label="Actualizar"><svg><use href="#i-refresh"/></svg></button>
+    </div>`;
+}
+
+function renderPlanMini() {
+  const mini = document.getElementById('user-plan-limits');
+  if (!mini) return;
+  const data = planLimitsData;
+  if (!data || !data.success || (!data.session && !data.weekly)) {
+    mini.hidden = true;
+    return;
+  }
+  const row = (label, win) => `
+    <span class="plan-mini-row">
+      <span>${label}</span>
+      <span class="plan-row-value">${Math.round(win.percent)}%</span>
+      ${planMeterHtml(win.percent)}
+    </span>`;
+  mini.innerHTML = (data.session ? row('Sesión actual', data.session) : '') + (data.weekly ? row('Semana', data.weekly) : '');
+  mini.hidden = false;
+}
+
+async function handleResetUsage() {
+  const btn = document.getElementById('btn-reset-usage');
+  if (!btn.dataset.confirm) {
+    btn.dataset.confirm = '1';
+    btn.textContent = '¿Seguro? Pulsa otra vez';
+    return;
+  }
+  delete btn.dataset.confirm;
+  btn.textContent = 'Poner a cero';
+  try {
+    const res = await authFetch('/api/usage/reset', { method: 'POST' });
+    const data = await res.json();
+    renderUsage(data.usage, null);
+    showToast('Contador de gasto reiniciado');
+  } catch (err) {
+    showToast('No se pudo reiniciar el contador');
+  }
+}
+
+// --- Barra lateral -----------------------------------------------------------
+function setSidebarCollapsed(collapsed) {
+  document.documentElement.classList.toggle('sidebar-collapsed', collapsed);
+  writePref('claudezer0_sidebar_collapsed', collapsed ? '1' : '0');
+}
+
+function focusSidebarSearch() {
+  if (mobileQuery.matches) {
+    openMobileSidebar();
+  } else {
+    setSidebarCollapsed(false);
+  }
+  const input = document.getElementById('sidebar-search-input');
+  if (input) setTimeout(() => input.focus(), 50);
+}
+
+// --- Montaje -----------------------------------------------------------------
+function setupShell() {
+  if (shellReady) return;
+  shellReady = true;
+
+  // Estado inicial
+  new MutationObserver(syncEmptyState).observe(emptyState, { attributes: true, attributeFilter: ['style'] });
+  syncEmptyState();
+  updateGreeting();
+  updateUserIdentity();
+  renderEffortOptions();
+  setOutputStyle(selectedOutputStyle);
+  applyTheme(readPref('claudezer0_theme', 'light'), { persist: false });
+  darkSchemeQuery.addEventListener('change', () => {
+    if (readPref('claudezer0_theme', 'light') === 'system') applyTheme('system', { persist: false });
+  });
+  adjustTextareaHeight();
+
+  // Barra lateral
+  document.getElementById('btn-collapse-sidebar')?.addEventListener('click', () => {
+    if (mobileQuery.matches) closeMobileSidebar();
+    else setSidebarCollapsed(true);
+  });
+  document.getElementById('btn-nav-personalize')?.addEventListener('click', openPersonalizeModal);
+  document.getElementById('btn-nav-sync')?.addEventListener('click', () => { closeMobileSidebar(); handleSyncModels(); });
+  document.getElementById('btn-nav-add-model')?.addEventListener('click', () => { closeMobileSidebar(); openCustomModelModal(); });
+  const moreBtn = document.getElementById('btn-nav-more');
+  const moreList = document.getElementById('nav-more-list');
+  moreBtn?.addEventListener('click', () => {
+    const open = moreList.hidden;
+    moreList.hidden = !open;
+    moreBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+
+  const searchInput = document.getElementById('sidebar-search-input');
+  searchInput?.addEventListener('input', () => {
+    sessionFilter = searchInput.value;
+    renderSessionsList(lastSessionsList);
+  });
+  searchInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      searchInput.value = '';
+      sessionFilter = '';
+      renderSessionsList(lastSessionsList);
+      searchInput.blur();
+    }
+  });
+
+  // Incógnito
+  document.getElementById('btn-incognito')?.addEventListener('click', () => setIncognito(!incognitoMode));
+  window.addEventListener('pagehide', () => discardIncognitoSession({ keepalive: true }));
+
+  // Menú "+"
+  bindDropdown('dropdown-plus', 'btn-composer-plus');
+  document.getElementById('btn-plus-commands')?.addEventListener('click', () => {
+    promptInput.value = '/';
+    promptInput.focus();
+    adjustTextareaHeight();
+    handlePromptInputSlash();
+  });
+  document.getElementById('btn-plus-folder')?.addEventListener('click', openWorkspaceModal);
+  document.getElementById('btn-plus-incognito')?.addEventListener('click', () => setIncognito(!incognitoMode));
+
+  // Proyecto, estilo y usuario
+  bindDropdown('dropdown-project', 'input-ws-pill', renderProjectMenu);
+  document.getElementById('btn-project-browse')?.addEventListener('click', openWorkspaceModal);
+
+  bindDropdown('dropdown-output', 'btn-output-trigger');
+  document.querySelectorAll('.output-option').forEach(opt => {
+    opt.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setOutputStyle(opt.dataset.value);
+      closeAllDropdowns();
+    });
+  });
+
+  bindDropdown('dropdown-user', 'btn-sidebar-user-pill', () => loadPlanLimits());
+  document.getElementById('user-plan-limits')?.addEventListener('click', openUsageModal);
+  document.getElementById('plan-chip')?.addEventListener('click', openUsageModal);
+  document.getElementById('plan-alert')?.addEventListener('click', handlePlanAlertClick);
+  document.getElementById('btn-user-security')?.addEventListener('click', openSecurityModal);
+  document.getElementById('btn-close-security')?.addEventListener('click', closeSecurityModal);
+  document.getElementById('security-password-form')?.addEventListener('submit', handleSecurityPasswordSubmit);
+  document.getElementById('btn-logout-all')?.addEventListener('click', handleLogoutAll);
+  document.getElementById('plan-limits')?.addEventListener('click', (e) => {
+    if (e.target.closest('.plan-refresh')) loadPlanLimits(true);
+  });
+  document.getElementById('btn-user-personalize')?.addEventListener('click', openPersonalizeModal);
+  document.getElementById('btn-user-key')?.addEventListener('click', openKeyModal);
+  document.getElementById('btn-user-usage')?.addEventListener('click', openUsageModal);
+  document.getElementById('btn-nav-usage')?.addEventListener('click', openUsageModal);
+  document.getElementById('btn-close-usage')?.addEventListener('click', closeUsageModal);
+  document.getElementById('btn-done-usage')?.addEventListener('click', closeUsageModal);
+  document.getElementById('btn-reset-usage')?.addEventListener('click', handleResetUsage);
+  document.querySelectorAll('[data-theme-choice]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      applyTheme(btn.dataset.themeChoice);
+    });
+  });
+
+  // Submenú de esfuerzo
+  const effortSubmenu = document.getElementById('effort-submenu');
+  if (effortSubmenu) bindSubmenu(effortSubmenu);
+
+  // Modal Personalizar
+  document.getElementById('btn-close-personalize')?.addEventListener('click', () => closePersonalizeModal());
+  document.getElementById('btn-cancel-personalize')?.addEventListener('click', () => closePersonalizeModal());
+  document.getElementById('btn-save-personalize')?.addEventListener('click', savePersonalization);
+  document.querySelectorAll('#pz-theme button').forEach(b => b.addEventListener('click', () => applyTheme(b.dataset.value, { persist: false })));
+  document.querySelectorAll('#pz-accent button').forEach(b => b.addEventListener('click', () => applyAccent(b.dataset.value, { persist: false })));
+  document.querySelectorAll('#pz-font button').forEach(b => b.addEventListener('click', () => applyChatFont(b.dataset.value, { persist: false })));
+
+  // Atajos de teclado
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      focusSidebarSearch();
+    }
+    if (e.key === 'Escape') {
+      closePersonalizeModal();
+      closeUsageModal();
+      closeSecurityModal();
     }
   });
 }
