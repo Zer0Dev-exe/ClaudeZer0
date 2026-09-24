@@ -229,9 +229,13 @@ async function checkAuth() {
     const res = await fetch('/api/auth/verify', {
       headers: { 'Authorization': `Bearer ${authToken}` }
     });
-    if (res.ok) {
+    const data = res.ok ? await res.json() : null;
+    if (data && data.success && !data.mustChangePassword) {
+      if (data.username) setCurrentUsername(data.username);
       showApp();
     } else {
+      // Sin sesión, o hay que cambiar la contraseña por defecto (para eso se pide volver a entrar)
+      clearAuthToken();
       showLogin();
     }
   } catch (err) {
@@ -240,10 +244,79 @@ async function checkAuth() {
   }
 }
 
+// Contraseña recién introducida, solo mientras se obliga a cambiar la de por defecto
+let pendingLoginPassword = null;
+
+function setCurrentUsername(name) {
+  currentUsername = name;
+  localStorage.setItem('claudezer0_user', name);
+}
+
+function clearAuthToken() {
+  localStorage.removeItem('claudezer0_token');
+  authToken = null;
+}
+
 function showLogin() {
+  pendingLoginPassword = null;
+  document.getElementById('login-card').hidden = false;
+  document.getElementById('force-password-card').hidden = true;
   loginScreen.style.display = 'flex';
   mainApp.style.display = 'none';
 }
+
+function showForcePasswordChange() {
+  document.getElementById('login-card').hidden = true;
+  document.getElementById('force-password-card').hidden = false;
+  document.getElementById('force-password-user').value = currentUsername;
+  document.getElementById('force-password-error').style.display = 'none';
+  loginScreen.style.display = 'flex';
+  mainApp.style.display = 'none';
+  document.getElementById('force-password-new').focus();
+}
+
+async function requestPasswordChange(currentPassword, newPassword) {
+  const res = await fetch('/api/auth/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+    body: JSON.stringify({ currentPassword, newPassword })
+  });
+  return res.json();
+}
+
+document.getElementById('force-password-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errorBox = document.getElementById('force-password-error');
+  const next = document.getElementById('force-password-new').value;
+  const confirm = document.getElementById('force-password-confirm').value;
+  errorBox.style.display = 'none';
+
+  if (next !== confirm) {
+    errorBox.textContent = 'Las contraseñas no coinciden';
+    errorBox.style.display = 'block';
+    return;
+  }
+  if (!pendingLoginPassword) {
+    showLogin();
+    return;
+  }
+
+  try {
+    const data = await requestPasswordChange(pendingLoginPassword, next);
+    if (data.success) {
+      pendingLoginPassword = null;
+      e.target.reset();
+      showApp();
+      showToast('Contraseña actualizada');
+    } else {
+      errorBox.textContent = data.message || 'No se pudo cambiar la contraseña';
+      errorBox.style.display = 'block';
+    }
+  } catch (err) {
+    errorBox.textContent = 'Error al conectar con el servidor';
+    errorBox.style.display = 'block';
+  }
+});
 
 function showApp() {
   loginScreen.style.display = 'none';
@@ -271,10 +344,15 @@ loginForm.addEventListener('submit', async (e) => {
 
     if (data.success) {
       authToken = data.token;
-      currentUsername = data.username;
+      setCurrentUsername(data.username);
       localStorage.setItem('claudezer0_token', authToken);
-      localStorage.setItem('claudezer0_user', currentUsername);
-      showApp();
+      loginPassword.value = '';
+      if (data.mustChangePassword) {
+        pendingLoginPassword = password;
+        showForcePasswordChange();
+      } else {
+        showApp();
+      }
     } else {
       loginError.textContent = data.message || 'Usuario o contraseña incorrectos';
       loginError.style.display = 'block';
@@ -293,8 +371,7 @@ btnLogout.addEventListener('click', async () => {
     });
   } catch (e) {}
 
-  localStorage.removeItem('claudezer0_token');
-  authToken = null;
+  clearAuthToken();
   showLogin();
 });
 
@@ -306,7 +383,8 @@ async function authFetch(url, options = {}) {
     options.headers['x-claude-api-key'] = clientApiKey;
   }
   const res = await fetch(url, options);
-  if (res.status === 401) {
+  if (res.status === 401 || res.status === 403) {
+    clearAuthToken();
     showLogin();
     throw new Error('No autorizado');
   }
@@ -321,6 +399,7 @@ function initApp() {
   loadModels().then(syncModelsSilently);
   connectWebSocket();
   loadInitialStatus();
+  loadPlanLimits();
   loadSessions();
   setupVoice();
   setupEventListeners();
@@ -329,7 +408,8 @@ function initApp() {
 
 function connectWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}?token=${authToken}`;
+  // El token se envía en el primer mensaje (onopen), no en la URL
+  const wsUrl = `${protocol}//${window.location.host}`;
 
   if (statusIndicator) statusIndicator.className = 'status-indicator';
   if (statusText) statusText.textContent = 'Conectando...';
@@ -342,10 +422,16 @@ function connectWebSocket() {
     ws.send(JSON.stringify({ type: 'auth', token: authToken }));
   };
 
-  ws.onclose = () => {
+  ws.onclose = (event) => {
     if (statusIndicator) statusIndicator.className = 'status-indicator';
     if (statusText) statusText.textContent = 'Desconectado';
     if (btnModelTrigger) btnModelTrigger.classList.remove('working');
+    // 4001: el servidor ha cerrado esta sesión (cambio de contraseña o «cerrar en todos»)
+    if (event.code === 4001) {
+      clearAuthToken();
+      showLogin();
+      return;
+    }
     setTimeout(() => {
       if (authToken) connectWebSocket();
     }, 3000);
@@ -1112,9 +1198,10 @@ async function handleSlashSync() {
   }
 }
 
-function sendPrompt(customPrompt) {
+function sendPrompt(customPrompt, { skipPlanCheck = false } = {}) {
   const prompt = (customPrompt || promptInput.value).trim();
   if (!prompt || isRunning) return;
+  hidePlanAlert();
 
   hideSlashPopup();
 
@@ -1152,6 +1239,13 @@ function sendPrompt(customPrompt) {
       keyValidationStatus.className = 'key-status-box error';
       keyValidationStatus.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg> <span>Modo Cliente activo: Ingresa tu propia API Key de Claude antes de enviar mensajes.</span>`;
     }
+    return;
+  }
+
+  // Poco margen en el plan y un modelo caro seleccionado: preguntar antes de enviar
+  const planWarning = skipPlanCheck ? null : planWarningFor(selectedModel);
+  if (planWarning) {
+    showPlanAlert(prompt, planWarning);
     return;
   }
 
@@ -1227,6 +1321,13 @@ function handleWsMessage(data) {
         `;
         bubble.insertBefore(toolCard, currentTextElement);
         scrollToBottom();
+      }
+      break;
+
+    case 'plan_limits':
+      if (!clientApiKey && data.limits) {
+        planLimitsData = data.limits;
+        onPlanLimitsUpdated();
       }
       break;
 
@@ -2633,6 +2734,67 @@ function renderUsage(usage, pricing) {
   `;
 }
 
+// --- Seguridad ---------------------------------------------------------------
+function openSecurityModal() {
+  closeAllDropdowns();
+  closeMobileSidebar();
+  const form = document.getElementById('security-password-form');
+  form.reset();
+  document.getElementById('security-user').value = currentUsername;
+  document.getElementById('security-status').style.display = 'none';
+  const btn = document.getElementById('btn-logout-all');
+  btn.textContent = 'Cerrar sesión en todos los dispositivos';
+  delete btn.dataset.confirm;
+  document.getElementById('security-modal').style.display = 'flex';
+}
+
+function closeSecurityModal() {
+  document.getElementById('security-modal').style.display = 'none';
+}
+
+function setSecurityStatus(ok, message) {
+  const box = document.getElementById('security-status');
+  box.className = `key-status-box ${ok ? 'success' : 'error'}`;
+  box.textContent = message;
+  box.style.display = 'flex';
+}
+
+async function handleSecurityPasswordSubmit(e) {
+  e.preventDefault();
+  const current = document.getElementById('security-current').value;
+  const next = document.getElementById('security-new').value;
+  if (next !== document.getElementById('security-confirm').value) {
+    setSecurityStatus(false, 'Las contraseñas nuevas no coinciden');
+    return;
+  }
+  try {
+    const data = await requestPasswordChange(current, next);
+    if (data.success) {
+      e.target.reset();
+      setSecurityStatus(true, 'Contraseña cambiada. Se ha cerrado la sesión en el resto de dispositivos.');
+    } else {
+      setSecurityStatus(false, data.message || 'No se pudo cambiar la contraseña');
+    }
+  } catch (err) {
+    setSecurityStatus(false, 'Error al conectar con el servidor');
+  }
+}
+
+async function handleLogoutAll() {
+  const btn = document.getElementById('btn-logout-all');
+  if (!btn.dataset.confirm) {
+    btn.dataset.confirm = '1';
+    btn.textContent = '¿Seguro? Pulsa otra vez';
+    return;
+  }
+  try {
+    await authFetch('/api/auth/logout-all', { method: 'POST' });
+  } catch (err) {}
+  closeSecurityModal();
+  clearAuthToken();
+  showLogin();
+}
+
 // --- Límites del plan (suscripción) ------------------------------------------
 let planLimitsData = null;
 let planLimitsLoading = false;
@@ -2649,8 +2811,141 @@ async function loadPlanLimits(force = false) {
   } finally {
     planLimitsLoading = false;
   }
+  onPlanLimitsUpdated();
+}
+
+function onPlanLimitsUpdated() {
   renderPlanLimits();
   renderPlanMini();
+  renderPlanChip();
+  notifyPlanThresholds();
+}
+
+const PLAN_WARN_PERCENT = 80;
+const PLAN_CRITICAL_PERCENT = 90;
+const PLAN_WINDOW_LABELS = { session: 'la sesión actual', weekly: 'el límite semanal' };
+
+// Ventana más apurada (sesión o semana), si hay datos de suscripción
+function tightestPlanWindow() {
+  const data = planLimitsData;
+  if (clientApiKey || !data || !data.success) return null;
+  return ['session', 'weekly']
+    .filter(key => data[key])
+    .map(key => ({ key, ...data[key] }))
+    .sort((a, b) => b.percent - a.percent)[0] || null;
+}
+
+function renderPlanChip() {
+  const chip = document.getElementById('plan-chip');
+  if (!chip) return;
+  const win = tightestPlanWindow();
+  if (!win || win.percent < PLAN_WARN_PERCENT) {
+    chip.hidden = true;
+    return;
+  }
+  const label = win.key === 'session' ? 'Sesión' : 'Semana';
+  const reset = formatPlanReset(win.resetsAt).replace(/^Se restablece /, '');
+  chip.className = `chip-btn plan-chip ${win.percent >= PLAN_CRITICAL_PERCENT ? 'is-full' : 'is-warn'}`;
+  chip.innerHTML = `<span class="plan-chip-dot"></span>${label} ${Math.round(win.percent)}%${reset ? `<span class="plan-chip-reset"> · ${escapeHtml(reset)}</span>` : ''}`;
+  chip.hidden = false;
+}
+
+// Aviso en pantalla al cruzar el 80 % y el 100 %, una sola vez por ventana de uso
+function notifyPlanThresholds() {
+  const data = planLimitsData;
+  if (clientApiKey || !data || !data.success) return;
+  const seen = readJsonPref('claudezer0_plan_alerts');
+  let changed = false;
+  for (const key of ['session', 'weekly']) {
+    const win = data[key];
+    if (!win) continue;
+    const level = win.percent >= 100 ? 100 : win.percent >= PLAN_WARN_PERCENT ? PLAN_WARN_PERCENT : 0;
+    const prev = seen[key] && seen[key].resetsAt === win.resetsAt ? seen[key].level : 0;
+    if (level > prev) {
+      showToast(level >= 100
+        ? `Has alcanzado ${PLAN_WINDOW_LABELS[key]}. ${formatPlanReset(win.resetsAt)}`
+        : `Llevas el ${Math.round(win.percent)}% de ${PLAN_WINDOW_LABELS[key]}`);
+    }
+    if (level !== prev || !seen[key] || seen[key].resetsAt !== win.resetsAt) {
+      seen[key] = { resetsAt: win.resetsAt, level: Math.max(level, prev) };
+      changed = true;
+    }
+  }
+  if (changed) writePref('claudezer0_plan_alerts', JSON.stringify(seen));
+}
+
+function readJsonPref(key) {
+  try {
+    return JSON.parse(readPref(key, '{}')) || {};
+  } catch {
+    return {};
+  }
+}
+
+// --- Aviso antes de enviar con un modelo caro cuando queda poco margen ---
+let pendingPlanPrompt = null;
+
+function sonnetAlternative() {
+  return availableModelsList.find(m => m.id.includes('sonnet') && !m.legacy) || null;
+}
+
+function planWarningFor(modelId) {
+  const win = tightestPlanWindow();
+  if (!win || win.percent < PLAN_CRITICAL_PERCENT) return null;
+  if (!/opus|fable/i.test(modelId || '')) return null;
+  const sonnet = sonnetAlternative();
+  if (!sonnet) return null;
+  if (readPref('claudezer0_plan_alert_dismissed', '') === `${win.key}:${win.resetsAt}`) return null;
+  return { win, sonnet };
+}
+
+function showPlanAlert(prompt, warning) {
+  pendingPlanPrompt = prompt;
+  const alertBox = document.getElementById('plan-alert');
+  const model = getModelInfo(selectedModel);
+  const modelName = shortModelName(model.name || selectedModel);
+  const sonnetName = shortModelName(warning.sonnet.name);
+  const ratio = model.pricing && warning.sonnet.pricing && warning.sonnet.pricing.output
+    ? model.pricing.output / warning.sonnet.pricing.output
+    : null;
+  const ratioText = ratio && ratio > 1.05
+    ? ` ${escapeHtml(modelName)} gasta unas ${ratio.toFixed(1).replace(/\.0$/, '').replace('.', ',')} veces más que ${escapeHtml(sonnetName)}.`
+    : '';
+
+  alertBox.innerHTML = `
+    <div class="plan-alert-text">
+      <strong>Llevas el ${Math.round(warning.win.percent)}% de ${PLAN_WINDOW_LABELS[warning.win.key]}.</strong>${ratioText}
+      <span class="plan-alert-reset">${escapeHtml(formatPlanReset(warning.win.resetsAt))}</span>
+    </div>
+    <div class="plan-alert-actions">
+      <button type="button" class="btn-text" data-plan-action="send">Enviar igualmente</button>
+      <button type="button" class="btn-primary-terracotta" data-plan-action="switch">Cambiar a ${escapeHtml(sonnetName)}</button>
+    </div>`;
+  alertBox.dataset.window = `${warning.win.key}:${warning.win.resetsAt}`;
+  alertBox.dataset.sonnet = warning.sonnet.id;
+  alertBox.hidden = false;
+}
+
+function hidePlanAlert() {
+  const alertBox = document.getElementById('plan-alert');
+  if (alertBox) alertBox.hidden = true;
+  pendingPlanPrompt = null;
+}
+
+function handlePlanAlertClick(e) {
+  const action = e.target.closest('[data-plan-action]')?.dataset.planAction;
+  if (!action) return;
+  const alertBox = document.getElementById('plan-alert');
+  const prompt = pendingPlanPrompt;
+  if (action === 'send') {
+    // No volver a preguntar hasta el siguiente restablecimiento
+    writePref('claudezer0_plan_alert_dismissed', alertBox.dataset.window);
+  } else {
+    setModel(alertBox.dataset.sonnet);
+    showToast(`Modelo: ${shortModelName(getModelInfo(alertBox.dataset.sonnet).name || alertBox.dataset.sonnet)}`);
+  }
+  hidePlanAlert();
+  if (prompt) sendPrompt(prompt, { skipPlanCheck: true });
 }
 
 function formatPlanReset(iso) {
@@ -2871,6 +3166,12 @@ function setupShell() {
 
   bindDropdown('dropdown-user', 'btn-sidebar-user-pill', () => loadPlanLimits());
   document.getElementById('user-plan-limits')?.addEventListener('click', openUsageModal);
+  document.getElementById('plan-chip')?.addEventListener('click', openUsageModal);
+  document.getElementById('plan-alert')?.addEventListener('click', handlePlanAlertClick);
+  document.getElementById('btn-user-security')?.addEventListener('click', openSecurityModal);
+  document.getElementById('btn-close-security')?.addEventListener('click', closeSecurityModal);
+  document.getElementById('security-password-form')?.addEventListener('submit', handleSecurityPasswordSubmit);
+  document.getElementById('btn-logout-all')?.addEventListener('click', handleLogoutAll);
   document.getElementById('plan-limits')?.addEventListener('click', (e) => {
     if (e.target.closest('.plan-refresh')) loadPlanLimits(true);
   });
@@ -2909,6 +3210,7 @@ function setupShell() {
     if (e.key === 'Escape') {
       closePersonalizeModal();
       closeUsageModal();
+      closeSecurityModal();
     }
   });
 }

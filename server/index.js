@@ -2,7 +2,6 @@ import 'dotenv/config';
 import express from 'express';
 import http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
-import cors from 'cors';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
@@ -42,7 +41,13 @@ import {
   login,
   validateToken,
   logout,
-  requireAuth
+  logoutAll,
+  changePassword,
+  requireAuth,
+  requireAuthAllowDefault,
+  tokenFromRequest,
+  getUsername,
+  isUsingDefaultPassword
 } from './auth.js';
 
 import {
@@ -60,11 +65,32 @@ const projectRoot = path.resolve(__dirname, '..');
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+// Solo se aceptan conexiones WebSocket desde la propia web (evita que otra página abra una)
+const wss = new WebSocketServer({
+  server,
+  verifyClient: ({ origin, req }) => {
+    if (!origin) return true;
+    try {
+      return new URL(origin).host === req.headers.host;
+    } catch {
+      return false;
+    }
+  }
+});
 
 const PORT = process.env.PORT || 5050;
+// HOST=127.0.0.1 para que solo se pueda entrar desde este PC (p. ej. si usas Tailscale)
+const HOST = process.env.HOST || '0.0.0.0';
 
-app.use(cors());
+// Cabeceras de seguridad básicas
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
+
 app.use(express.json());
 app.use(express.static(path.join(projectRoot, 'public')));
 
@@ -82,27 +108,47 @@ function broadcast(data) {
 // Auth Endpoints
 // --------------------------------------------------------------------------
 app.post('/api/auth/login', (req, res) => {
-  const { username, password } = req.body;
-  const result = login(username, password);
+  const { username, password } = req.body || {};
+  const result = login(username, password, req);
   if (result.success) {
     res.json(result);
   } else {
-    res.status(401).json(result);
+    res.status(result.locked ? 429 : 401).json(result);
   }
 });
 
 app.get('/api/auth/verify', (req, res) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (validateToken(token)) {
-    res.json({ success: true });
+  if (validateToken(tokenFromRequest(req))) {
+    res.json({ success: true, username: getUsername(), mustChangePassword: isUsingDefaultPassword() });
   } else {
     res.status(401).json({ success: false });
   }
 });
 
-app.post('/api/auth/logout', requireAuth, (req, res) => {
+app.post('/api/auth/change-password', requireAuthAllowDefault, (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  const result = changePassword(req.userToken, currentPassword, newPassword);
+  if (result.success) {
+    // Echar a los WebSocket de las sesiones que se acaban de cerrar
+    for (const client of wss.clients) {
+      if (client.authToken && !validateToken(client.authToken)) client.close(4001, 'Sesión cerrada');
+    }
+  }
+  res.status(result.success ? 200 : 400).json(result);
+});
+
+app.post('/api/auth/logout', requireAuthAllowDefault, (req, res) => {
   logout(req.userToken);
+  for (const client of wss.clients) {
+    if (client.authToken === req.userToken) client.close(4001, 'Sesión cerrada');
+  }
+  res.json({ success: true });
+});
+
+// Cerrar sesión en todos los dispositivos (incluido este)
+app.post('/api/auth/logout-all', requireAuthAllowDefault, (req, res) => {
+  logoutAll();
+  for (const client of wss.clients) client.close(4001, 'Sesión cerrada');
   res.json({ success: true });
 });
 
@@ -197,8 +243,15 @@ app.get('/api/usage/plan', requireAuth, async (req, res) => {
   if (getAppMode() === 'Client' || clientKey) {
     return res.json({ success: false, notApplicable: true, message: 'Estás usando una clave de API: no hay límites de suscripción.' });
   }
-  res.json(await getPlanLimits(getHostOAuthToken(), { force: req.query.refresh === '1' }));
+  res.json(await getPlanLimits(getHostOAuthToken(), req.query.refresh === '1' ? { maxAgeMs: 0 } : {}));
 });
+
+// Tras cada respuesta que gasta la suscripción, avisar a todos los dispositivos del nuevo porcentaje
+async function broadcastPlanLimits() {
+  if (getAppMode() === 'Client') return;
+  const limits = await getPlanLimits(getHostOAuthToken(), { maxAgeMs: 20 * 1000 });
+  if (limits.success) broadcast({ type: 'plan_limits', limits });
+}
 
 app.post('/api/usage/reset', requireAuth, (req, res) => {
   res.json({ success: true, usage: resetUsage() });
@@ -282,29 +335,19 @@ app.post('/api/cancel', requireAuth, (req, res) => {
 // --------------------------------------------------------------------------
 // WebSocket Server
 // --------------------------------------------------------------------------
-wss.on('connection', (ws, req) => {
+wss.on('connection', (ws) => {
   ws.isAuthenticated = false;
-
-  // Check token in query param
-  const urlParams = new URLSearchParams(req.url.replace(/^.*\?/, ''));
-  const queryToken = urlParams.get('token');
-  if (queryToken && validateToken(queryToken)) {
-    ws.isAuthenticated = true;
-    ws.send(JSON.stringify({
-      type: 'auth_success',
-      workspace: getCurrentWorkspace(),
-      isTaskActive: isTaskActive()
-    }));
-  }
+  ws.authToken = null;
 
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message.toString());
 
-      // Handle WebSocket Auth
+      // Autenticación: el token llega en el primer mensaje, nunca en la URL
       if (data.type === 'auth') {
-        if (validateToken(data.token)) {
+        if (validateToken(data.token) && !isUsingDefaultPassword()) {
           ws.isAuthenticated = true;
+          ws.authToken = data.token;
           ws.send(JSON.stringify({
             type: 'auth_success',
             workspace: getCurrentWorkspace(),
@@ -316,8 +359,9 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
-      // Block unauthenticated messages
-      if (!ws.isAuthenticated) {
+      // Bloquear mensajes sin sesión (o cuya sesión se ha cerrado mientras tanto)
+      if (!ws.isAuthenticated || !validateToken(ws.authToken)) {
+        ws.isAuthenticated = false;
         ws.send(JSON.stringify({ type: 'auth_error', message: 'No autenticado' }));
         return;
       }
@@ -420,6 +464,8 @@ wss.on('connection', (ws, req) => {
                 message: assistantMsg,
                 result
               });
+
+              if (!apiKey) broadcastPlanLimits();
             },
             onError: (err) => {
               assistantMsg.status = 'error';
@@ -476,7 +522,7 @@ function getLocalIps() {
 const MODELS_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
 setInterval(() => runModelsSync(null, 'periódica'), MODELS_SYNC_INTERVAL_MS).unref();
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, HOST, () => {
   runModelsSync(null, 'arranque');
 
   const ips = getLocalIps();
@@ -500,11 +546,15 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('       🌟 CLAUDEZER0 - INTERFAZ CLAUDE.AI 🌟        ');
   console.log('====================================================');
   console.log(`💻 Acceso PC:           http://localhost:${PORT}`);
-  console.log(`📱 Acceso móvil (Wi-Fi): http://${primaryIp}:${PORT}`);
+  if (HOST === '0.0.0.0') {
+    console.log(`📱 Acceso móvil (Wi-Fi): http://${primaryIp}:${PORT}`);
+  } else {
+    console.log(`🔒 Solo escucha en:     ${HOST} (HOST en .env)`);
+  }
   console.log('----------------------------------------------------');
   console.log(`📡 Modo (.env):         MODE=${currentMode} (${currentMode === 'Hoster' ? 'Cuenta compartida del anfitrión' : 'Cada cliente usa su propia key'})`);
   console.log(`🤖 Cuenta Claude:       ${authSummary}`);
-  console.log(`👤 Usuario (.env):      ${process.env.CLAUDEZER0_USER || 'admin'}`);
-  console.log(`🔑 Contraseña (.env):   ${process.env.CLAUDEZER0_PASSWORD || 'claudezer0'}`);
+  console.log(`👤 Usuario:             ${getUsername()}`);
+  console.log(`🔑 Contraseña:          ${isUsingDefaultPassword() ? '⚠️ Por defecto: se pedirá cambiarla al entrar' : 'Guardada cifrada en data/auth.json'}`);
   console.log('====================================================');
 });

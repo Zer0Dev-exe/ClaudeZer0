@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^2.1.280",
-    "cors": "^2.8.5",
     "dotenv": "^18.0.1",
     "express": "^4.21.2",
     "ws": "^8.18.0"

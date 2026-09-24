@@ -103,13 +103,13 @@ function normalizeWindow(w) {
 
 /**
  * Consultar el porcentaje gastado de la sesión actual (5 h) y de los límites semanales
- * con el token OAuth de la suscripción. `force` ignora la caché.
+ * con el token OAuth de la suscripción. `maxAgeMs` es la antigüedad máxima aceptable de la caché (0 = consultar ya).
  */
-export async function getPlanLimits(oauthToken, { force = false } = {}) {
+export async function getPlanLimits(oauthToken, { maxAgeMs = PLAN_LIMITS_CACHE_MS } = {}) {
   if (!oauthToken) {
     return { success: false, message: 'No hay una suscripción de Claude vinculada en el anfitrión (pnpm auth:login).' };
   }
-  if (!force && planLimitsCache && Date.now() - planLimitsCache.fetchedAt < PLAN_LIMITS_CACHE_MS) {
+  if (planLimitsCache && Date.now() - planLimitsCache.fetchedAt < maxAgeMs) {
     return planLimitsCache;
   }
 

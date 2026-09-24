@@ -74,7 +74,7 @@
        PANTALLA DE LOGIN (.env)
        ==================================================================== -->
   <div class="login-container" id="login-screen">
-    <div class="login-card">
+    <div class="login-card" id="login-card">
       <div class="claude-star-logo">
         <svg><use href="#i-spark"/></svg>
       </div>
@@ -101,6 +101,29 @@
       <div class="login-footer-hint">
         Configurable en <code>.env</code> (CLAUDEZER0_USER y CLAUDEZER0_PASSWORD)
       </div>
+    </div>
+
+    <!-- Cambio obligatorio de la contraseña por defecto -->
+    <div class="login-card" id="force-password-card" hidden>
+      <div class="claude-star-logo">
+        <svg><use href="#i-key"/></svg>
+      </div>
+      <h1 class="login-title">Cambia la contraseña</h1>
+      <p class="login-desc">Estás usando la contraseña por defecto. Cualquiera en tu red podría entrar y ejecutar Claude en este PC, así que elige una nueva antes de continuar.</p>
+
+      <form id="force-password-form" autocomplete="on">
+        <input type="text" autocomplete="username" id="force-password-user" hidden>
+        <div class="input-group">
+          <label for="force-password-new">Nueva contraseña</label>
+          <input type="password" id="force-password-new" placeholder="Mínimo 8 caracteres" required minlength="8" autocomplete="new-password">
+        </div>
+        <div class="input-group">
+          <label for="force-password-confirm">Repite la contraseña</label>
+          <input type="password" id="force-password-confirm" required minlength="8" autocomplete="new-password">
+        </div>
+        <div class="login-error" id="force-password-error" style="display: none;"></div>
+        <button type="submit" class="btn-login">Guardar y entrar</button>
+      </form>
     </div>
   </div>
 
@@ -195,6 +218,9 @@
             <button type="button" class="menu-row" id="btn-user-usage">
               <svg><use href="#i-gauge"/></svg><span>Uso y gasto</span>
             </button>
+            <button type="button" class="menu-row" id="btn-user-security">
+              <svg><use href="#i-key"/></svg><span>Seguridad</span>
+            </button>
             <div class="menu-row menu-row-static">
               <span>Tema</span>
               <div class="theme-switch" role="group" aria-label="Tema">
@@ -251,6 +277,7 @@
 
       <footer class="input-area">
         <div class="composer">
+          <div class="plan-alert" id="plan-alert" role="alert" hidden></div>
           <div class="input-card">
             <div class="slash-popup" id="slash-popup" role="listbox" aria-label="Comandos de Claude" style="display: none;">
               <div class="slash-popup-header">Comandos disponibles</div>
@@ -340,6 +367,9 @@
             </div>
 
             <div class="toolbar-right">
+              <!-- Aviso de límite del plan (solo a partir del 80 %) -->
+              <button type="button" class="chip-btn plan-chip" id="plan-chip" title="Ver uso del plan" hidden></button>
+
               <!-- Selector de modelo + esfuerzo -->
               <div class="custom-dropdown" id="dropdown-model">
                 <button type="button" class="chip-btn model-selector-btn" id="btn-model-trigger" aria-haspopup="listbox" aria-expanded="false" title="Modelo y esfuerzo">
@@ -731,6 +761,37 @@
       <div class="modal-bottom">
         <button class="btn-text" id="btn-reset-usage">Poner a cero</button>
         <button class="btn-primary-terracotta" id="btn-done-usage">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL DE SEGURIDAD
+       ==================================================================== -->
+  <div class="modal-overlay" id="security-modal" style="display: none;">
+    <div class="modal-dialog security-dialog">
+      <div class="modal-top">
+        <h3>Seguridad</h3>
+        <button class="modal-close" id="btn-close-security" aria-label="Cerrar">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <form class="pz-section" id="security-password-form" autocomplete="on">
+          <span class="pz-label">Cambiar contraseña</span>
+          <input type="text" autocomplete="username" id="security-user" hidden>
+          <input type="password" id="security-current" class="pz-input" placeholder="Contraseña actual" required autocomplete="current-password">
+          <input type="password" id="security-new" class="pz-input" placeholder="Nueva contraseña (mínimo 8 caracteres)" required minlength="8" autocomplete="new-password">
+          <input type="password" id="security-confirm" class="pz-input" placeholder="Repite la nueva contraseña" required minlength="8" autocomplete="new-password">
+          <div class="key-status-box" id="security-status" style="display: none;"></div>
+          <div><button type="submit" class="btn-primary-terracotta">Cambiar contraseña</button></div>
+          <p class="pz-hint">Al cambiarla se cierra la sesión en el resto de dispositivos. Si la olvidas, pon una nueva en <code>CLAUDEZER0_PASSWORD</code> del <code>.env</code> y reinicia el servidor.</p>
+        </form>
+
+        <section class="pz-section">
+          <span class="pz-label">Sesiones abiertas</span>
+          <p class="pz-hint">Si has entrado desde un dispositivo que ya no usas o no reconoces, ciérralas todas. Tendrás que volver a iniciar sesión también aquí.</p>
+          <div><button type="button" class="btn-text security-danger" id="btn-logout-all">Cerrar sesión en todos los dispositivos</button></div>
+        </section>
       </div>
     </div>
   </div>
