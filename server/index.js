@@ -262,8 +262,9 @@ wss.on('connection', (ws, req) => {
       }
 
       if (data.type === 'run_task') {
-        const { prompt, workspace, sessionId, permissionMode, model, apiKey } = data;
+        const { prompt, workspace, sessionId, permissionMode, model, apiKey, attachments } = data;
         const targetWs = workspace || getCurrentWorkspace();
+        const attachmentList = Array.isArray(attachments) ? attachments : [];
 
         // Get or create session
         let currentSession = sessionId ? getSession(sessionId) : null;
@@ -275,6 +276,8 @@ wss.on('connection', (ws, req) => {
           id: Date.now().toString(),
           role: 'user',
           text: prompt,
+          // Solo los nombres: el contenido de los adjuntos nunca se guarda
+          attachments: attachmentList.map(a => String(a.name || 'archivo')),
           workspace: targetWs,
           timestamp: Date.now()
         };
@@ -303,6 +306,7 @@ wss.on('connection', (ws, req) => {
             permissionMode: permissionMode || 'acceptEdits',
             model: model || null,
             apiKey: apiKey || null,
+            attachments: attachmentList,
             onEvent: (event) => {
               if (event.type === 'text_delta') {
                 assistantMsg.text += event.text;
@@ -366,10 +370,14 @@ wss.on('connection', (ws, req) => {
             }
           });
         } catch (err) {
-          ws.send(JSON.stringify({
-            type: 'error',
-            message: err.message
-          }));
+          assistantMsg.status = 'error';
+          assistantMsg.error = err.message;
+          broadcast({
+            type: 'task_error',
+            sessionId: currentSession.id,
+            message: assistantMsg,
+            error: { message: err.message }
+          });
         }
       } else if (data.type === 'cancel_task') {
         const res = cancelActiveTask();

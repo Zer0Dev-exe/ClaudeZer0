@@ -50,6 +50,9 @@ const promptInput = document.getElementById('prompt-input');
 const btnSend = document.getElementById('btn-send');
 const btnStop = document.getElementById('btn-stop');
 const btnVoice = document.getElementById('btn-voice');
+const btnAttach = document.getElementById('btn-attach');
+const attachInput = document.getElementById('attach-input');
+const attachPreview = document.getElementById('attach-preview');
 const inputWsPill = document.getElementById('input-ws-pill');
 const inputWsName = document.getElementById('input-ws-name');
 const permissionMode = document.getElementById('permission-mode');
@@ -535,7 +538,7 @@ function renderMessages(messages) {
 
   messages.forEach(msg => {
     if (msg.role === 'user') {
-      appendUserMsg(msg.text);
+      appendUserMsg(msg.text, (msg.attachments || []).map(name => ({ name })));
     } else if (msg.role === 'assistant') {
       appendAssistantMsgStatic(msg);
     }
@@ -544,13 +547,114 @@ function renderMessages(messages) {
   scrollToBottom();
 }
 
-function appendUserMsg(text) {
+function appendUserMsg(text, attachments = []) {
   emptyState.style.display = 'none';
   const row = document.createElement('div');
   row.className = 'msg-row user';
-  row.innerHTML = `<div class="msg-bubble">${escapeHtml(text)}</div>`;
+  // Las miniaturas solo existen en memoria (object URLs); al recargar solo queda el nombre
+  const attachHtml = attachments.length
+    ? `<div class="msg-attachments">${attachments.map(renderAttachChip).join('')}</div>`
+    : '';
+  const bubbleHtml = text ? `<div class="msg-bubble">${escapeHtml(text)}</div>` : '';
+  row.innerHTML = attachHtml + bubbleHtml;
   messagesContainer.appendChild(row);
   scrollToBottom();
+}
+
+// ==========================================================================
+// Archivos adjuntos (solo en memoria; el servidor los borra al terminar)
+// ==========================================================================
+const MAX_ATTACHMENTS = 10;
+const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+let pendingAttachments = [];
+
+function renderAttachChip(att, index, removable) {
+  const removeBtn = removable === true
+    ? `<button type="button" class="attach-remove" data-index="${index}" title="Quitar">×</button>`
+    : '';
+  if (att.url) {
+    return `<div class="attach-chip is-image" title="${escapeHtml(att.name)}"><img src="${att.url}" alt="${escapeHtml(att.name)}">${removeBtn}</div>`;
+  }
+  return `<div class="attach-chip" title="${escapeHtml(att.name)}">📄 <span class="attach-name">${escapeHtml(att.name)}</span>${removeBtn}</div>`;
+}
+
+function renderAttachPreview() {
+  attachPreview.innerHTML = pendingAttachments.map((att, i) => renderAttachChip(att, i, true)).join('');
+  attachPreview.hidden = pendingAttachments.length === 0;
+}
+
+function addAttachments(fileList) {
+  for (const file of fileList) {
+    if (pendingAttachments.length >= MAX_ATTACHMENTS) {
+      showToast(`Máximo ${MAX_ATTACHMENTS} archivos por mensaje`);
+      break;
+    }
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      showToast(`"${file.name}" supera los 15 MB`);
+      continue;
+    }
+    pendingAttachments.push({
+      file,
+      name: file.name || `pegado-${Date.now()}.png`,
+      url: file.type.startsWith('image/') ? URL.createObjectURL(file) : null
+    });
+  }
+  renderAttachPreview();
+}
+
+function removeAttachment(index) {
+  const [removed] = pendingAttachments.splice(index, 1);
+  if (removed && removed.url) URL.revokeObjectURL(removed.url);
+  renderAttachPreview();
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function setupAttachments() {
+  btnAttach.addEventListener('click', () => attachInput.click());
+
+  attachInput.addEventListener('change', () => {
+    addAttachments(attachInput.files);
+    attachInput.value = '';
+  });
+
+  attachPreview.addEventListener('click', (e) => {
+    const btn = e.target.closest('.attach-remove');
+    if (btn) removeAttachment(Number(btn.dataset.index));
+  });
+
+  // Pegar imágenes con Ctrl+V
+  promptInput.addEventListener('paste', (e) => {
+    const files = Array.from(e.clipboardData?.files || []);
+    if (files.length) {
+      e.preventDefault();
+      addAttachments(files);
+    }
+  });
+
+  // Arrastrar y soltar sobre la caja de texto
+  const inputCard = promptInput.closest('.input-card');
+  inputCard.addEventListener('dragover', (e) => {
+    if (e.dataTransfer?.types?.includes('Files')) {
+      e.preventDefault();
+      inputCard.classList.add('drag-over');
+    }
+  });
+  inputCard.addEventListener('dragleave', () => inputCard.classList.remove('drag-over'));
+  inputCard.addEventListener('drop', (e) => {
+    inputCard.classList.remove('drag-over');
+    if (e.dataTransfer?.files?.length) {
+      e.preventDefault();
+      addAttachments(e.dataTransfer.files);
+    }
+  });
 }
 
 function startStreamingAssistant() {
@@ -1060,14 +1164,16 @@ async function handleSlashSync() {
   }
 }
 
-function sendPrompt(customPrompt) {
-  const prompt = (customPrompt || promptInput.value).trim();
-  if (!prompt || isRunning) return;
+async function sendPrompt(customPrompt) {
+  const typed = (customPrompt || promptInput.value).trim();
+  const hasAttachments = !customPrompt && pendingAttachments.length > 0;
+  if ((!typed && !hasAttachments) || isRunning) return;
 
   hideSlashPopup();
 
   // Interceptar Slash Commands
-  if (prompt.startsWith('/')) {
+  if (typed.startsWith('/')) {
+    const prompt = typed;
     const parts = prompt.split(/\s+/);
     const cmdName = parts[0].toLowerCase();
     const arg = parts.slice(1).join(' ').trim();
@@ -1103,17 +1209,35 @@ function sendPrompt(customPrompt) {
     return;
   }
 
+  const attachments = hasAttachments ? pendingAttachments : [];
+  const prompt = typed || 'Revisa los archivos adjuntos.';
+
   promptInput.value = '';
   adjustTextareaHeight();
+  pendingAttachments = [];
+  renderAttachPreview();
 
-  appendUserMsg(prompt);
+  appendUserMsg(typed, attachments);
   startStreamingAssistant();
   setRunning(true);
+
+  let encoded = [];
+  try {
+    encoded = await Promise.all(attachments.map(async att => ({
+      name: att.name,
+      data: await readFileAsBase64(att.file)
+    })));
+  } catch (err) {
+    showToast('No se pudieron leer los archivos adjuntos');
+    setRunning(false);
+    return;
+  }
 
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({
       type: 'run_task',
       prompt,
+      attachments: encoded,
       workspace: currentWorkspace,
       sessionId: activeSessionId,
       permissionMode: permissionMode ? permissionMode.value : 'auto',
@@ -1815,6 +1939,7 @@ async function handleSyncModels() {
 function setupEventListeners() {
   btnSend.addEventListener('click', () => sendPrompt());
   btnStop.addEventListener('click', cancelActiveTask);
+  setupAttachments();
 
   promptInput.addEventListener('keydown', (e) => {
     if (slashPopup && slashPopup.style.display === 'block') {

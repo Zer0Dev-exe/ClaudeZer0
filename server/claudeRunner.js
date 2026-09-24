@@ -1,6 +1,7 @@
 import { spawn, execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -60,6 +61,48 @@ if (!fs.existsSync(clientConfigDir)) {
 
 let activeProcess = null;
 let activeTaskId = null;
+
+const MAX_ATTACHMENTS = 10;
+const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+
+/**
+ * Escribir los adjuntos en una carpeta temporal del sistema (se borra al terminar la tarea).
+ * No se guardan en el workspace ni en el historial.
+ */
+function writeTempAttachments(attachments) {
+  if (!Array.isArray(attachments) || attachments.length === 0) return null;
+  if (attachments.length > MAX_ATTACHMENTS) {
+    throw new Error(`Máximo ${MAX_ATTACHMENTS} archivos adjuntos por mensaje.`);
+  }
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudezer0-'));
+  const files = [];
+  try {
+    attachments.forEach((att, i) => {
+      const buf = Buffer.from(String(att.data || ''), 'base64');
+      if (buf.length > MAX_ATTACHMENT_BYTES) {
+        throw new Error(`"${att.name}" supera el límite de ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB.`);
+      }
+      const safeName = String(att.name || `archivo-${i}`).replace(/[^\w.\-]/g, '_').slice(0, 100) || `archivo-${i}`;
+      const filePath = path.join(dir, `${i}-${safeName}`);
+      fs.writeFileSync(filePath, buf);
+      files.push(filePath);
+    });
+  } catch (err) {
+    removeTempDir(dir);
+    throw err;
+  }
+  return { dir, files };
+}
+
+function removeTempDir(dir) {
+  if (!dir) return;
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch (e) {
+    // ignore
+  }
+}
 
 /**
  * Obtener el modo configurado en .env (Hoster o Client)
@@ -169,6 +212,7 @@ export function getClaudeAuthStatus(clientApiKey = null) {
  * @param {string} [options.permissionMode] - 'acceptEdits' | 'auto' | 'bypassPermissions' | 'plan'
  * @param {string} [options.model] - Model name or alias
  * @param {string} [options.apiKey] - Claude API Key (requerida en Client mode, opcional en Hoster mode)
+ * @param {Array<{name: string, data: string}>} [options.attachments] - Archivos adjuntos en base64 (temporales)
  * @param {function} options.onEvent - Callback for streaming events
  * @param {function} options.onDone - Callback when completed
  * @param {function} options.onError - Callback on error
@@ -180,12 +224,19 @@ export function executeTask({
   permissionMode = 'auto',
   model,
   apiKey,
+  attachments,
   onEvent,
   onDone,
   onError
 }) {
   if (activeProcess) {
     throw new Error('Ya hay una tarea en ejecución con Claude Code. Cancélala primero.');
+  }
+
+  const temp = writeTempAttachments(attachments);
+  if (temp) {
+    // En una sola línea: cmd.exe /c corta los argumentos con saltos de línea
+    prompt = `${prompt} [Archivos adjuntos por el usuario (léelos con la herramienta Read): ${temp.files.join(' , ')}]`;
   }
 
   const appMode = getAppMode();
@@ -237,6 +288,11 @@ export function executeTask({
   // Resume previous session if provided
   if (sessionId) {
     args.push('--resume', sessionId);
+  }
+
+  // Permitir leer la carpeta temporal de adjuntos (está fuera del workspace)
+  if (temp) {
+    args.push('--add-dir', temp.dir);
   }
 
   onEvent({
@@ -396,6 +452,7 @@ export function executeTask({
 
     activeProcess = null;
     activeTaskId = null;
+    removeTempDir(temp?.dir);
 
     if (code === 0 || fullResult) {
       onDone({
@@ -421,6 +478,7 @@ export function executeTask({
   child.on('error', (err) => {
     activeProcess = null;
     activeTaskId = null;
+    removeTempDir(temp?.dir);
     onError({
       success: false,
       message: err.message
