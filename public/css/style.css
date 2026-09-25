@@ -243,6 +243,11 @@ kbd {
   background-color: var(--bg);
 }
 
+/* Comprobando la sesión guardada al cargar: ni login ni app hasta saber cuál toca */
+:root.auth-pending .login-container {
+  display: none !important;
+}
+
 .login-card {
   width: 100%;
   max-width: 400px;

@@ -25,6 +25,8 @@
         root.dataset.accent = localStorage.getItem('claudezer0_accent') || 'terracotta';
         root.dataset.chatFont = localStorage.getItem('claudezer0_chat_font') || 'serif';
         if (localStorage.getItem('claudezer0_sidebar_collapsed') === '1') root.classList.add('sidebar-collapsed');
+        // Hay sesión guardada: no enseñar el login mientras se comprueba (evita el parpadeo al recargar)
+        if (localStorage.getItem('claudezer0_token')) root.classList.add('auth-pending');
       } catch (e) {
         root.dataset.theme = 'light';
       }

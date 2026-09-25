@@ -267,6 +267,7 @@ function clearAuthToken() {
 }
 
 function showLogin() {
+  document.documentElement.classList.remove('auth-pending');
   pendingLoginPassword = null;
   document.getElementById('login-card').hidden = false;
   document.getElementById('force-password-card').hidden = true;
@@ -328,6 +329,7 @@ document.getElementById('force-password-form').addEventListener('submit', async 
 });
 
 function showApp() {
+  document.documentElement.classList.remove('auth-pending');
   loginScreen.style.display = 'none';
   mainApp.style.display = 'flex';
   userDisplayName.textContent = currentUsername;
