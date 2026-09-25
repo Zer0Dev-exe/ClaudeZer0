@@ -3113,3 +3113,234 @@ kbd {
 .input-card.drag-over {
   border-color: var(--accent);
 }
+
+/* ==========================================================================
+   Permisos de herramientas (modo Manual / Aceptar ediciones)
+   ========================================================================== */
+.permission-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.permission-card {
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  box-shadow: var(--shadow-sm);
+  font-size: 0.86rem;
+  color: var(--text-2);
+  transition: opacity 0.3s ease;
+}
+
+.permission-card.is-settled { opacity: 0.7; }
+.permission-card.is-allowed { border-color: color-mix(in srgb, var(--success) 50%, var(--border)); }
+.permission-card.is-denied { border-color: color-mix(in srgb, var(--danger) 50%, var(--border)); }
+
+.permission-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.permission-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--accent);
+}
+
+.permission-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.permission-title strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.permission-title code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+
+.permission-note {
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.permission-detail {
+  margin: 8px 0 0 28px;
+}
+
+.permission-detail summary {
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.permission-detail .claude-tool-body {
+  max-height: 240px;
+  overflow: auto;
+}
+
+.permission-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.permission-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.permission-result {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.is-allowed .permission-result { color: var(--success); }
+.is-denied .permission-result { color: var(--danger); }
+
+/* Herramienta que espera a que el usuario la apruebe */
+.claude-tool.is-waiting .tool-status {
+  background: var(--warning);
+  animation: none;
+}
+
+.claude-tool.is-waiting .tool-verb::after {
+  content: ' · esperando permiso';
+  color: var(--warning);
+  font-weight: 400;
+}
+
+/* ==========================================================================
+   Usuarios (admin) y límite mensual
+   ========================================================================== */
+.users-dialog {
+  max-width: 560px;
+}
+
+.users-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.user-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 12px 14px;
+}
+
+.user-row + .user-row {
+  border-top: 1px solid var(--border);
+}
+
+.user-row-main {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.user-row-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.user-row-meta {
+  margin-top: 4px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.user-row-meta code {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+}
+
+.user-row-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.user-role-chip {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.user-role-chip.is-admin {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-strong);
+}
+
+.users-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.users-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.users-modes label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-size: 0.86rem;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.users-modes input {
+  accent-color: var(--accent);
+}
+
+.users-modes small {
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.usage-limit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 0.84rem;
+  color: var(--text-2);
+}
+
+.usage-limit.is-reached {
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--border));
+}

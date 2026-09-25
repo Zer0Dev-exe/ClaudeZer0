@@ -8,15 +8,17 @@ const usageFilePath = path.resolve(__dirname, '..', 'data', 'usage.json');
 
 let usage = loadUsage();
 
+// `models`: total de todos los usuarios. `users[nombre]`: su gasto por modelo y, en `months`,
+// lo gastado cada mes con la cuenta del anfitrión (es lo que cuenta para su límite mensual).
 function emptyUsage() {
-  return { since: Date.now(), models: {} };
+  return { since: Date.now(), models: {}, users: {} };
 }
 
 function loadUsage() {
   try {
     if (fs.existsSync(usageFilePath)) {
       const parsed = JSON.parse(fs.readFileSync(usageFilePath, 'utf-8'));
-      if (parsed && parsed.models) return parsed;
+      if (parsed && parsed.models) return { users: {}, ...parsed };
     }
   } catch (err) {
     console.warn('Error leyendo usage.json:', err.message);
@@ -57,30 +59,65 @@ export function summarizeResultCost(resultEvent) {
   };
 }
 
+function monthKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function addToModels(models, modelId, u) {
+  const acc = models[modelId] || {
+    costUSD: 0, responses: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, lastUsed: 0
+  };
+  acc.costUSD += u.costUSD;
+  acc.responses += 1;
+  acc.inputTokens += u.inputTokens;
+  acc.outputTokens += u.outputTokens;
+  acc.cacheReadTokens += u.cacheReadTokens;
+  acc.cacheWriteTokens += u.cacheWriteTokens;
+  acc.lastUsed = Date.now();
+  models[modelId] = acc;
+}
+
 /**
- * Acumular el gasto de una respuesta en el total por modelo
+ * Acumular el gasto de una respuesta en el total por modelo y en el del usuario.
+ * `hostAccount`: se ha pagado con la cuenta del anfitrión (cuenta para el límite mensual).
  */
-export function recordUsage(costSummary) {
+export function recordUsage(costSummary, username = null, { hostAccount = true } = {}) {
   if (!costSummary) return;
+  const userUsage = username
+    ? (usage.users[username] ||= { models: {}, months: {} })
+    : null;
   for (const [modelId, u] of Object.entries(costSummary.byModel)) {
-    const acc = usage.models[modelId] || {
-      costUSD: 0, responses: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, lastUsed: 0
-    };
-    acc.costUSD += u.costUSD;
-    acc.responses += 1;
-    acc.inputTokens += u.inputTokens;
-    acc.outputTokens += u.outputTokens;
-    acc.cacheReadTokens += u.cacheReadTokens;
-    acc.cacheWriteTokens += u.cacheWriteTokens;
-    acc.lastUsed = Date.now();
-    usage.models[modelId] = acc;
+    addToModels(usage.models, modelId, u);
+    if (userUsage) addToModels(userUsage.models, modelId, u);
+  }
+  if (userUsage && hostAccount) {
+    const key = monthKey();
+    userUsage.months[key] = (userUsage.months[key] || 0) + (Number(costSummary.totalCostUSD) || 0);
   }
   saveUsage();
 }
 
-export function getUsage() {
-  const totalCostUSD = Object.values(usage.models).reduce((s, m) => s + m.costUSD, 0);
-  return { since: usage.since, totalCostUSD, models: usage.models };
+/**
+ * Uso total (username = null) o de un usuario concreto
+ */
+export function getUsage(username = null) {
+  const models = username ? (usage.users[username]?.models || {}) : usage.models;
+  const totalCostUSD = Object.values(models).reduce((s, m) => s + m.costUSD, 0);
+  return { since: usage.since, totalCostUSD, models };
+}
+
+/**
+ * Lo gastado este mes con la cuenta del anfitrión
+ */
+export function getMonthCost(username) {
+  return usage.users[username]?.months?.[monthKey()] || 0;
+}
+
+export function forgetUserUsage(username) {
+  if (usage.users[username]) {
+    delete usage.users[username];
+    saveUsage();
+  }
 }
 
 export function resetUsage() {

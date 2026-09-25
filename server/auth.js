@@ -7,7 +7,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dataDir = path.resolve(__dirname, '..', 'data');
 const credentialsPath = path.join(dataDir, 'auth.json');
+const usersPath = path.join(dataDir, 'users.json');
 const sessionsPath = path.join(dataDir, 'auth-sessions.json');
+
+// Modos de ejecución que se pueden conceder a un usuario (el admin los tiene todos)
+export const EXECUTION_MODES = ['manual', 'acceptEdits', 'plan', 'auto'];
+const DEFAULT_USER_MODES = ['manual', 'acceptEdits', 'plan'];
+const USERNAME_RE = /^[a-zA-Z0-9_.-]{3,32}$/;
 
 const DEFAULT_USER = 'admin';
 const DEFAULT_PASSWORD = 'claudezer0';
@@ -91,12 +97,150 @@ function loadCredentials() {
   return seeded;
 }
 
-export function getUsername() {
+export function getAdminUsername() {
   return credentials.username;
 }
 
+// Aviso de arranque: el admin aún tiene la contraseña por defecto
 export function isUsingDefaultPassword() {
   return !!credentials.mustChangePassword;
+}
+
+// --------------------------------------------------------------------------
+// Usuarios adicionales (los crea el admin). Cada uno tiene carpetas y modos permitidos
+// y, opcionalmente, un límite de gasto mensual con la cuenta del anfitrión.
+// --------------------------------------------------------------------------
+let users = readJson(usersPath, {});
+
+function saveUsers() {
+  writeJson(usersPath, users);
+}
+
+function isAdminName(username) {
+  return username === credentials.username;
+}
+
+// Datos que puede ver el resto del servidor (nunca el hash de la contraseña)
+function publicUser(username) {
+  if (isAdminName(username)) {
+    return {
+      username,
+      role: 'admin',
+      mustChangePassword: !!credentials.mustChangePassword,
+      roots: [],
+      allowedModes: [...EXECUTION_MODES],
+      monthlyLimitUSD: null
+    };
+  }
+  const u = users[username];
+  if (!u) return null;
+  return {
+    username,
+    role: 'user',
+    mustChangePassword: !!u.mustChangePassword,
+    roots: [...(u.roots || [])],
+    allowedModes: [...(u.allowedModes || DEFAULT_USER_MODES)],
+    monthlyLimitUSD: typeof u.monthlyLimitUSD === 'number' ? u.monthlyLimitUSD : null,
+    createdAt: u.createdAt || null
+  };
+}
+
+function passwordRecordFor(username) {
+  if (isAdminName(username)) return credentials.password;
+  return users[username]?.password || null;
+}
+
+function normalizeRoots(roots) {
+  const list = (Array.isArray(roots) ? roots : String(roots || '').split(/\r?\n/))
+    .map(r => String(r || '').trim())
+    .filter(Boolean);
+  if (list.length === 0) throw new Error('Indica al menos una carpeta permitida');
+  const resolved = [];
+  for (const r of list) {
+    const abs = path.resolve(r);
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) {
+      throw new Error(`La carpeta no existe: ${abs}`);
+    }
+    if (!resolved.includes(abs)) resolved.push(abs);
+  }
+  return resolved;
+}
+
+function normalizeModes(modes) {
+  const list = (Array.isArray(modes) ? modes : []).filter(m => EXECUTION_MODES.includes(m));
+  if (list.length === 0) throw new Error('Permite al menos un modo de ejecución');
+  return EXECUTION_MODES.filter(m => list.includes(m));
+}
+
+function normalizeLimit(limit) {
+  if (limit === null || limit === undefined || limit === '') return null;
+  const n = Number(limit);
+  if (!Number.isFinite(n) || n < 0) throw new Error('El límite mensual debe ser un número positivo');
+  return Math.round(n * 100) / 100;
+}
+
+function validateNewPassword(password) {
+  const pass = String(password ?? '');
+  if (pass.length < MIN_PASSWORD_LENGTH) {
+    throw new Error(`La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres`);
+  }
+  return pass;
+}
+
+export function listUsers() {
+  return [credentials.username, ...Object.keys(users).sort((a, b) => a.localeCompare(b))].map(publicUser);
+}
+
+export function createUser({ username, password, roots, allowedModes, monthlyLimitUSD }) {
+  const name = String(username || '').trim();
+  if (!USERNAME_RE.test(name)) {
+    throw new Error('El usuario debe tener 3-32 caracteres: letras, números, punto, guion o guion bajo');
+  }
+  const taken = [credentials.username, ...Object.keys(users)].some(u => u.toLowerCase() === name.toLowerCase());
+  if (taken) throw new Error('Ya existe un usuario con ese nombre');
+
+  users[name] = {
+    password: hashPassword(validateNewPassword(password)),
+    // La contraseña la pone el admin: el usuario tendrá que cambiarla al entrar
+    mustChangePassword: true,
+    roots: normalizeRoots(roots),
+    allowedModes: normalizeModes(allowedModes ?? DEFAULT_USER_MODES),
+    monthlyLimitUSD: normalizeLimit(monthlyLimitUSD),
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  saveUsers();
+  return publicUser(name);
+}
+
+export function updateUser(username, { password, roots, allowedModes, monthlyLimitUSD }) {
+  const u = users[username];
+  if (!u) throw new Error(isAdminName(username) ? 'El administrador se configura desde el .env' : 'Usuario no encontrado');
+
+  const next = { ...u };
+  if (roots !== undefined) next.roots = normalizeRoots(roots);
+  if (allowedModes !== undefined) next.allowedModes = normalizeModes(allowedModes);
+  if (monthlyLimitUSD !== undefined) next.monthlyLimitUSD = normalizeLimit(monthlyLimitUSD);
+  const resetPassword = password !== undefined && password !== null && password !== '';
+  if (resetPassword) {
+    next.password = hashPassword(validateNewPassword(password));
+    next.mustChangePassword = true;
+  }
+  next.updatedAt = Date.now();
+  users[username] = next;
+  saveUsers();
+
+  // Contraseña nueva: fuera de todos sus dispositivos
+  if (resetPassword) logoutAll(username);
+  return publicUser(username);
+}
+
+export function deleteUser(username) {
+  if (!users[username]) return false;
+  delete users[username];
+  saveUsers();
+  logoutAll(username);
+  return true;
 }
 
 // --------------------------------------------------------------------------
@@ -112,14 +256,19 @@ function pruneSessions() {
     if (!s || now - (s.lastUsed || 0) > SESSION_TTL_MS) {
       delete sessions[key];
       changed = true;
+    } else if (!s.username) {
+      // Sesiones anteriores al soporte multiusuario: eran del admin
+      s.username = credentials.username;
+      changed = true;
     }
   }
   if (changed) writeJson(sessionsPath, sessions);
 }
 
-function createSessionToken(req) {
+function createSessionToken(req, username) {
   const token = crypto.randomBytes(32).toString('hex');
   sessions[hashToken(token)] = {
+    username,
     createdAt: Date.now(),
     lastUsed: Date.now(),
     userAgent: String(req?.headers?.['user-agent'] || '').slice(0, 200)
@@ -134,7 +283,8 @@ function getSessionFor(token) {
   const s = sessions[key];
   if (!s) return null;
   const now = Date.now();
-  if (now - s.lastUsed > SESSION_TTL_MS) {
+  // Sesión caducada o de un usuario que ya no existe
+  if (now - s.lastUsed > SESSION_TTL_MS || !publicUser(s.username)) {
     delete sessions[key];
     writeJson(sessionsPath, sessions);
     return null;
@@ -181,12 +331,16 @@ export function login(username, password, req) {
     return { success: false, locked: true, message: `Demasiados intentos fallidos. Vuelve a probar en ${minutes} min.` };
   }
 
-  const userOk = safeEqual(username ?? '', credentials.username);
-  const passOk = verifyPassword(password ?? '', credentials.password);
-  if (userOk && passOk) {
+  const name = String(username ?? '');
+  const knownName = [credentials.username, ...Object.keys(users)].find(u => safeEqual(name, u)) || null;
+  // Con un usuario inexistente también se calcula un hash, para no delatar qué usuarios existen
+  const stored = knownName ? passwordRecordFor(knownName) : credentials.password;
+  const passOk = verifyPassword(password ?? '', stored);
+  if (knownName && passOk) {
     failedLogins.delete(ip);
-    const token = createSessionToken(req);
-    return { success: true, token, username: credentials.username, mustChangePassword: isUsingDefaultPassword() };
+    const token = createSessionToken(req, knownName);
+    const user = publicUser(knownName);
+    return { success: true, token, username: knownName, role: user.role, mustChangePassword: user.mustChangePassword };
   }
 
   const entry = registerFailure(ip);
@@ -200,27 +354,42 @@ export function login(username, password, req) {
 }
 
 export function changePassword(currentToken, currentPassword, newPassword) {
-  if (!verifyPassword(currentPassword ?? '', credentials.password)) {
+  const username = getSessionFor(currentToken)?.username;
+  const stored = username ? passwordRecordFor(username) : null;
+  if (!stored || !verifyPassword(currentPassword ?? '', stored)) {
     return { success: false, message: 'La contraseña actual no es correcta' };
   }
   const next = String(newPassword ?? '');
   if (next.length < MIN_PASSWORD_LENGTH) {
     return { success: false, message: `La nueva contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres` };
   }
-  if (next === DEFAULT_PASSWORD || verifyPassword(next, credentials.password)) {
+  if (next === DEFAULT_PASSWORD || verifyPassword(next, stored)) {
     return { success: false, message: 'Elige una contraseña distinta de la actual' };
   }
 
-  credentials = { ...credentials, password: hashPassword(next), mustChangePassword: false, updatedAt: Date.now() };
-  writeJson(credentialsPath, credentials);
+  if (isAdminName(username)) {
+    credentials = { ...credentials, password: hashPassword(next), mustChangePassword: false, updatedAt: Date.now() };
+    writeJson(credentialsPath, credentials);
+  } else {
+    users[username] = { ...users[username], password: hashPassword(next), mustChangePassword: false, updatedAt: Date.now() };
+    saveUsers();
+  }
 
   // Cerrar el resto de sesiones: quien tuviera la contraseña antigua deja de tener acceso
-  logoutAll(currentToken);
+  logoutAll(username, currentToken);
   return { success: true };
 }
 
 export function validateToken(token) {
   return !!getSessionFor(token);
+}
+
+/**
+ * Usuario dueño de un token (o null si la sesión no es válida)
+ */
+export function getUserFromToken(token) {
+  const s = getSessionFor(token);
+  return s ? publicUser(s.username) : null;
 }
 
 export function logout(token) {
@@ -232,11 +401,13 @@ export function logout(token) {
 }
 
 /**
- * Cerrar todas las sesiones abiertas (menos `exceptToken`, si se indica)
+ * Cerrar todas las sesiones abiertas de un usuario (menos `exceptToken`, si se indica)
  */
-export function logoutAll(exceptToken = null) {
+export function logoutAll(username, exceptToken = null) {
   const keep = exceptToken ? hashToken(exceptToken) : null;
-  sessions = keep && sessions[keep] ? { [keep]: sessions[keep] } : {};
+  for (const [key, s] of Object.entries(sessions)) {
+    if (s.username === username && key !== keep) delete sessions[key];
+  }
   writeJson(sessionsPath, sessions);
   return { success: true };
 }
@@ -251,12 +422,14 @@ function tokenFromRequest(req) {
  */
 export function requireAuth(req, res, next) {
   const token = tokenFromRequest(req);
-  if (!validateToken(token)) {
+  const user = getUserFromToken(token);
+  if (!user) {
     return res.status(401).json({ success: false, error: 'Acceso no autorizado. Inicia sesión.' });
   }
   req.userToken = token;
-  if (isUsingDefaultPassword() && !req.allowWithDefaultPassword) {
-    return res.status(403).json({ success: false, mustChangePassword: true, error: 'Cambia la contraseña por defecto para continuar.' });
+  req.user = user;
+  if (user.mustChangePassword && !req.allowWithDefaultPassword) {
+    return res.status(403).json({ success: false, mustChangePassword: true, error: 'Cambia la contraseña para continuar.' });
   }
   return next();
 }
@@ -265,6 +438,14 @@ export function requireAuth(req, res, next) {
 export function requireAuthAllowDefault(req, res, next) {
   req.allowWithDefaultPassword = true;
   return requireAuth(req, res, next);
+}
+
+// Solo el administrador (tras requireAuth)
+export function requireAdmin(req, res, next) {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ success: false, error: 'Solo el administrador puede hacer esto.' });
+  }
+  return next();
 }
 
 export { tokenFromRequest };

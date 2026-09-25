@@ -1,32 +1,55 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { isRestricted, isPathAllowed } from './accessPolicy.js';
 
 const CONFIG_FILE = path.join(os.homedir(), '.claudezer0_config.json');
 
 // Default initial workspace
-let currentWorkspace = path.join(os.homedir(), 'Documents');
-if (!fs.existsSync(currentWorkspace)) {
-  currentWorkspace = os.homedir();
+let defaultWorkspace = path.join(os.homedir(), 'Documents');
+if (!fs.existsSync(defaultWorkspace)) {
+  defaultWorkspace = os.homedir();
 }
+
+// Carpeta activa del admin (`currentWorkspace`, compatible con versiones anteriores) y de cada usuario
+let config = { currentWorkspace: defaultWorkspace, users: {} };
 
 // Load persisted workspace if available
 try {
   if (fs.existsSync(CONFIG_FILE)) {
     const data = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
     if (data.currentWorkspace && fs.existsSync(data.currentWorkspace)) {
-      currentWorkspace = data.currentWorkspace;
+      config.currentWorkspace = data.currentWorkspace;
     }
+    if (data.users && typeof data.users === 'object') config.users = data.users;
   }
 } catch (e) {
   console.warn('Could not read config file:', e.message);
 }
 
-export function getCurrentWorkspace() {
-  return currentWorkspace;
+function saveConfig() {
+  try {
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+  } catch (e) {
+    console.error('Error saving config:', e.message);
+  }
 }
 
-export function setWorkspace(newPath) {
+function assertAllowed(user, target) {
+  if (!isPathAllowed(user, target)) {
+    throw new Error('No tienes acceso a esa carpeta');
+  }
+}
+
+export function getCurrentWorkspace(user) {
+  if (!isRestricted(user)) return config.currentWorkspace;
+  const saved = config.users[user.username];
+  if (saved && fs.existsSync(saved) && isPathAllowed(user, saved)) return saved;
+  // Sin carpeta guardada (o ya no permitida): la primera carpeta permitida
+  return user.roots.find(r => fs.existsSync(r)) || user.roots[0] || null;
+}
+
+export function setWorkspace(user, newPath) {
   const resolved = path.resolve(newPath);
   if (!fs.existsSync(resolved)) {
     throw new Error(`La ruta no existe: ${resolved}`);
@@ -35,23 +58,28 @@ export function setWorkspace(newPath) {
   if (!stat.isDirectory()) {
     throw new Error(`La ruta no es un directorio: ${resolved}`);
   }
-  currentWorkspace = resolved;
-  
-  // Persist
-  try {
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify({ currentWorkspace }, null, 2));
-  } catch (e) {
-    console.error('Error saving config:', e.message);
-  }
+  assertAllowed(user, resolved);
 
-  return currentWorkspace;
+  if (isRestricted(user)) config.users[user.username] = resolved;
+  else config.currentWorkspace = resolved;
+  saveConfig();
+
+  return resolved;
 }
 
-export function listDirectory(dirPath) {
-  const targetPath = dirPath ? path.resolve(dirPath) : currentWorkspace;
-  if (!fs.existsSync(targetPath)) {
+export function forgetUserWorkspace(username) {
+  if (config.users[username]) {
+    delete config.users[username];
+    saveConfig();
+  }
+}
+
+export function listDirectory(user, dirPath) {
+  const targetPath = dirPath ? path.resolve(dirPath) : getCurrentWorkspace(user);
+  if (!targetPath || !fs.existsSync(targetPath)) {
     throw new Error(`El directorio no existe: ${targetPath}`);
   }
+  assertAllowed(user, targetPath);
 
   const entries = fs.readdirSync(targetPath, { withFileTypes: true });
   const folders = [];
@@ -80,17 +108,19 @@ export function listDirectory(dirPath) {
     }
   }
 
+  const parent = path.dirname(targetPath) !== targetPath ? path.dirname(targetPath) : null;
   return {
     current: targetPath,
-    parent: path.dirname(targetPath) !== targetPath ? path.dirname(targetPath) : null,
+    parent: parent && isPathAllowed(user, parent) ? parent : null,
     folders: folders.sort((a, b) => a.name.localeCompare(b.name)),
     files: files.slice(0, 50).sort((a, b) => a.name.localeCompare(b.name))
   };
 }
 
-export function createDirectory(parentPath, folderName) {
+export function createDirectory(user, parentPath, folderName) {
   const safeName = folderName.replace(/[<>:"/\\|?*]/g, '_').trim();
   if (!safeName) throw new Error('Nombre de carpeta inválido');
+  assertAllowed(user, parentPath);
   const target = path.join(parentPath, safeName);
   if (fs.existsSync(target)) {
     throw new Error('La carpeta ya existe');
@@ -99,7 +129,14 @@ export function createDirectory(parentPath, folderName) {
   return target;
 }
 
-export function getQuickLocations() {
+export function getQuickLocations(user) {
+  // Los usuarios con restricciones solo ven sus carpetas permitidas
+  if (isRestricted(user)) {
+    return user.roots
+      .filter(r => fs.existsSync(r))
+      .map(r => ({ name: path.basename(r) || r, path: r }));
+  }
+
   const home = os.homedir();
   const isWin = process.platform === 'win32';
   const list = [
@@ -121,7 +158,7 @@ export function getQuickLocations() {
   const codeFolder = path.join(home, 'Code');
   const projectsFolder = path.join(home, 'Projects');
   const devFolder = path.join(home, 'Documents', 'J.A.R.V.I.S');
-  
+
   if (fs.existsSync(codeFolder)) list.push({ name: 'Code', path: codeFolder });
   if (fs.existsSync(projectsFolder)) list.push({ name: 'Projects', path: projectsFolder });
   if (fs.existsSync(devFolder)) list.push({ name: 'J.A.R.V.I.S', path: devFolder });

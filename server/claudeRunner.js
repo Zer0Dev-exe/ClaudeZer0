@@ -60,8 +60,8 @@ if (!fs.existsSync(clientConfigDir)) {
   }
 }
 
-let activeProcess = null;
-let activeTaskId = null;
+// Una tarea como máximo por usuario: usuario -> proceso de Claude Code
+const activeProcesses = new Map();
 
 const MAX_ATTACHMENTS = 10;
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
@@ -107,6 +107,18 @@ function removeTempDir(dir) {
 
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const OUTPUT_STYLES = ['Explanatory', 'Learning'];
+
+// Modos de la web -> valores de --permission-mode del CLI ('manual' es el modo por defecto, que pregunta)
+const CLI_PERMISSION_MODES = {
+  manual: 'default',
+  acceptEdits: 'acceptEdits',
+  auto: 'auto',
+  plan: 'plan',
+  bypassPermissions: 'bypassPermissions'
+};
+
+const PERMISSION_TOOL = 'mcp__claudezer0__approve';
+const permissionMcpScript = path.join(__dirname, 'permissionMcp.js');
 
 const tmpDir = path.join(projectRoot, 'data', '.tmp');
 if (!fs.existsSync(tmpDir)) {
@@ -260,7 +272,9 @@ export function getClaudeAuthStatus(clientApiKey = null) {
  * @param {string} options.prompt - Prompt or command for Claude Code
  * @param {string} options.workspace - Working directory
  * @param {string} [options.sessionId] - Session ID to resume
- * @param {string} [options.permissionMode] - 'acceptEdits' | 'auto' | 'bypassPermissions' | 'plan'
+ * @param {string} options.owner - Usuario que lanza la tarea (una tarea activa por usuario)
+ * @param {string} [options.permissionMode] - 'manual' | 'acceptEdits' | 'auto' | 'bypassPermissions' | 'plan'
+ * @param {{url: string, secret: string}} [options.permissionBridge] - Puente para pedir permisos desde la web
  * @param {string} [options.model] - Model name or alias
  * @param {string} [options.apiKey] - Claude API Key (requerida en Client mode, opcional en Hoster mode)
  * @param {Array<{name: string, data: string}>} [options.attachments] - Archivos adjuntos en base64 (temporales)
@@ -275,7 +289,9 @@ export function executeTask({
   prompt,
   workspace,
   sessionId,
+  owner,
   permissionMode = 'auto',
+  permissionBridge,
   model,
   apiKey,
   attachments,
@@ -286,8 +302,8 @@ export function executeTask({
   onDone,
   onError
 }) {
-  if (activeProcess) {
-    throw new Error('Ya hay una tarea en ejecución con Claude Code. Cancélala primero.');
+  if (activeProcesses.has(owner)) {
+    throw new Error('Ya tienes una tarea en ejecución con Claude Code. Cancélala primero.');
   }
 
   const appMode = getAppMode();
@@ -314,8 +330,12 @@ export function executeTask({
   // Permitir modelos nuevos o dinámicos sin restricciones de catálogo rígidas
   cleanEnv.CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT = '1';
 
+  // Las peticiones de permiso esperan a que el usuario responda en la web (el CLI corta las llamadas MCP largas)
+  if (permissionBridge && !cleanEnv.MCP_TOOL_TIMEOUT) {
+    cleanEnv.MCP_TOOL_TIMEOUT = String(15 * 60 * 1000);
+  }
+
   const taskId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  activeTaskId = taskId;
 
   const targetDir = workspace && fs.existsSync(workspace) ? workspace : projectRoot;
 
@@ -333,9 +353,27 @@ export function executeTask({
     '--verbose'
   ];
 
-  // Set permission mode
-  if (permissionMode) {
-    args.push('--permission-mode', permissionMode);
+  args.push('--permission-mode', CLI_PERMISSION_MODES[permissionMode] || 'default');
+
+  // Cuando Claude Code necesita permiso lo pide a través del servidor MCP de ClaudeZer0 (y este, a la web).
+  // La configuración va en un archivo temporal porque lleva el secreto de la tarea.
+  let mcpConfigPath = null;
+  if (permissionBridge) {
+    mcpConfigPath = path.join(tmpDir, `mcp-${taskId}.json`);
+    fs.writeFileSync(mcpConfigPath, JSON.stringify({
+      mcpServers: {
+        claudezer0: {
+          type: 'stdio',
+          command: process.execPath,
+          args: [permissionMcpScript],
+          env: {
+            CLAUDEZER0_PERMISSION_URL: permissionBridge.url,
+            CLAUDEZER0_PERMISSION_SECRET: permissionBridge.secret
+          }
+        }
+      }
+    }), { encoding: 'utf-8', mode: 0o600 });
+    args.push('--mcp-config', mcpConfigPath, '--permission-prompt-tool', PERMISSION_TOOL);
   }
 
   // Set model using valid Claude Code CLI alias
@@ -401,7 +439,7 @@ export function executeTask({
         stdio: ['ignore', 'pipe', 'pipe']
       });
 
-  activeProcess = child;
+  activeProcesses.set(owner, child);
 
   let buffer = '';
 
@@ -534,6 +572,7 @@ export function executeTask({
 
   const cleanupInstructions = () => {
     if (instructionsPath) fs.rm(instructionsPath, { force: true }, () => {});
+    if (mcpConfigPath) fs.rm(mcpConfigPath, { force: true }, () => {});
   };
   child.once('close', cleanupInstructions);
   child.once('error', cleanupInstructions);
@@ -552,8 +591,7 @@ export function executeTask({
       }
     }
 
-    activeProcess = null;
-    activeTaskId = null;
+    releaseProcess(owner, child);
     removeTempDir(temp?.dir);
 
     if (code === 0 || fullResult) {
@@ -578,8 +616,7 @@ export function executeTask({
   });
 
   child.on('error', (err) => {
-    activeProcess = null;
-    activeTaskId = null;
+    releaseProcess(owner, child);
     removeTempDir(temp?.dir);
     onError({
       success: false,
@@ -593,37 +630,42 @@ export function executeTask({
   };
 }
 
+// Liberar el hueco del usuario solo si sigue ocupado por este proceso (tras cancelar puede haber otro)
+function releaseProcess(owner, child) {
+  if (activeProcesses.get(owner) === child) activeProcesses.delete(owner);
+}
+
 /**
- * Cancel currently active Claude Code task
+ * Cancelar la tarea activa de un usuario
  */
-export function cancelActiveTask() {
-  if (activeProcess) {
+export function cancelActiveTask(owner) {
+  const proc = activeProcesses.get(owner);
+  if (proc) {
     const isWin = process.platform === 'win32';
     if (isWin) {
       try {
-        execSync(`taskkill /pid ${activeProcess.pid} /T /F`);
+        execSync(`taskkill /pid ${proc.pid} /T /F`);
       } catch (e) {
         try {
-          activeProcess.kill('SIGTERM');
+          proc.kill('SIGTERM');
         } catch (err) {}
       }
     } else {
       // Linux / macOS: terminar el subproceso y sus hijos
       try {
-        execSync(`kill -TERM -${activeProcess.pid} 2>/dev/null || kill -TERM ${activeProcess.pid} 2>/dev/null`);
+        execSync(`kill -TERM -${proc.pid} 2>/dev/null || kill -TERM ${proc.pid} 2>/dev/null`);
       } catch (e) {
         try {
-          activeProcess.kill('SIGTERM');
+          proc.kill('SIGTERM');
         } catch (err) {}
       }
     }
-    activeProcess = null;
-    activeTaskId = null;
+    activeProcesses.delete(owner);
     return { canceled: true };
   }
   return { canceled: false, message: 'No hay ninguna tarea activa' };
 }
 
-export function isTaskActive() {
-  return activeProcess !== null;
+export function isTaskActive(owner) {
+  return activeProcesses.has(owner);
 }

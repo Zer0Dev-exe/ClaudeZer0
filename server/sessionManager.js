@@ -33,9 +33,23 @@ function saveSessions() {
   }
 }
 
-export function getAllSessions() {
+/**
+ * Las conversaciones anteriores al soporte multiusuario pasan a ser del admin
+ */
+export function assignLegacyOwner(username) {
+  let changed = false;
+  for (const s of Object.values(sessions)) {
+    if (!s.owner) {
+      s.owner = username;
+      changed = true;
+    }
+  }
+  if (changed) saveSessions();
+}
+
+export function getAllSessions(owner) {
   return Object.values(sessions)
-    .filter(s => !s.incognito)
+    .filter(s => !s.incognito && s.owner === owner)
     .map(s => ({
       id: s.id,
       title: s.title || 'Nueva conversación',
@@ -47,15 +61,21 @@ export function getAllSessions() {
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-export function getSession(id) {
-  return sessions[id] || null;
+/**
+ * Conversación por id; con `owner` solo se devuelve si es suya
+ */
+export function getSession(id, owner) {
+  const s = sessions[id];
+  if (!s || (owner !== undefined && s.owner !== owner)) return null;
+  return s;
 }
 
-export function createSession(title = 'Nueva conversación', workspace = '', { incognito = false } = {}) {
+export function createSession(title = 'Nueva conversación', workspace = '', { incognito = false, owner } = {}) {
   const id = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
   const now = Date.now();
   const newSession = {
     id,
+    owner,
     title,
     workspace,
     claudeSessionId: null,
@@ -116,4 +136,14 @@ export function deleteSession(id) {
     return session;
   }
   return null;
+}
+
+/**
+ * Eliminar todas las conversaciones de un usuario (al borrarlo). Devuelve las eliminadas.
+ */
+export function deleteSessionsByOwner(owner) {
+  const removed = Object.values(sessions).filter(s => s.owner === owner);
+  for (const s of removed) delete sessions[s.id];
+  if (removed.length) saveSessions();
+  return removed;
 }

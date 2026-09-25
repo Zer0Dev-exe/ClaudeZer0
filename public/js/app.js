@@ -4,6 +4,8 @@
 
 let authToken = localStorage.getItem('claudezer0_token') || null;
 let currentUsername = localStorage.getItem('claudezer0_user') || 'admin';
+// Rol, modos y carpetas permitidas del usuario (los envía el servidor)
+let currentUser = null;
 let ws = null;
 let currentWorkspace = '';
 let activeSessionId = null;
@@ -238,6 +240,7 @@ async function checkAuth() {
     const data = res.ok ? await res.json() : null;
     if (data && data.success && !data.mustChangePassword) {
       if (data.username) setCurrentUsername(data.username);
+      if (data.user) currentUser = data.user;
       showApp();
     } else {
       // Sin sesión, o hay que cambiar la contraseña por defecto (para eso se pide volver a entrar)
@@ -389,7 +392,10 @@ async function authFetch(url, options = {}) {
     options.headers['x-claude-api-key'] = clientApiKey;
   }
   const res = await fetch(url, options);
-  if (res.status === 401 || res.status === 403) {
+  // 403 también llega cuando un usuario sin permisos de admin intenta algo: solo se sale si hay que cambiar la contraseña
+  const mustRelogin = res.status === 401
+    || (res.status === 403 && (await res.clone().json().catch(() => ({}))).mustChangePassword);
+  if (mustRelogin) {
     clearAuthToken();
     showLogin();
     throw new Error('No autorizado');
@@ -457,6 +463,7 @@ async function loadInitialStatus() {
   try {
     const res = await authFetch('/api/status');
     const data = await res.json();
+    if (data.user) applyCurrentUser(data.user);
     if (data.auth) {
       serverAuthInfo = data.auth;
     }
@@ -1499,6 +1506,30 @@ function finishToolCards(status = 'done') {
 
 function handleWsMessage(data) {
   switch (data.type) {
+    case 'auth_success':
+      if (data.user) applyCurrentUser(data.user);
+      if (data.workspace) updateWorkspaceUI(data.workspace);
+      // Al reconectar, recuperar las peticiones de permiso que siguen esperando
+      pendingPermissions.clear();
+      (data.pendingPermissions || []).forEach(req => pendingPermissions.set(req.id, req));
+      renderPermissionDock();
+      break;
+
+    case 'user_updated':
+      if (data.user) applyCurrentUser(data.user);
+      break;
+
+    case 'permission_request':
+      if (data.request) {
+        pendingPermissions.set(data.request.id, data.request);
+        renderPermissionDock();
+      }
+      break;
+
+    case 'permission_resolved':
+      settlePermissionCard(data.id, data.allowed);
+      break;
+
     case 'assistant_start':
       if (data.sessionId && !activeSessionId) {
         activeSessionId = data.sessionId;
@@ -2487,6 +2518,21 @@ function initModelAndMode() {
   }
   const modeInfo = EXECUTION_MODES[savedMode] || EXECUTION_MODES['auto'];
   setPermissionMode(savedMode, modeInfo.icon, modeInfo.label);
+  applyAllowedModes();
+}
+
+// Mostrar solo los modos que el admin ha concedido a este usuario
+function applyAllowedModes() {
+  const allowed = currentUser?.allowedModes;
+  if (!Array.isArray(allowed) || allowed.length === 0) return;
+  document.querySelectorAll('.mode-option').forEach(opt => {
+    opt.hidden = !allowed.includes(opt.getAttribute('data-value'));
+  });
+  const current = permissionMode ? permissionMode.value : null;
+  if (!allowed.includes(current)) {
+    const fallback = allowed[0];
+    setPermissionMode(fallback, null, EXECUTION_MODES[fallback]?.label);
+  }
 }
 
 function setPermissionMode(modeValue, modeIcon, modeLabel) {
@@ -2922,7 +2968,7 @@ async function openUsageModal() {
   try {
     const res = await authFetch('/api/usage');
     const data = await res.json();
-    renderUsage(data.usage, data.pricing);
+    renderUsage(data.usage, data.pricing, data.monthlyLimit);
   } catch (err) {
     document.getElementById('usage-body').innerHTML = '<div class="usage-empty">No se pudo cargar el uso</div>';
   }
@@ -2933,7 +2979,7 @@ function closeUsageModal() {
   if (modal) modal.style.display = 'none';
 }
 
-function renderUsage(usage, pricing) {
+function renderUsage(usage, pricing, monthlyLimit = null) {
   const body = document.getElementById('usage-body');
   const rows = Object.entries(usage.models || {}).sort((a, b) => b[1].costUSD - a[1].costUSD);
   const maxCost = rows.length ? rows[0][1].costUSD || 1 : 1;
@@ -2970,7 +3016,16 @@ function renderUsage(usage, pricing) {
     : `Estás usando una clave de API: estos importes se facturan a esa cuenta. Los calcula Claude Code a precio de tarifa.
        El multiplicador (×) compara el precio de salida de cada modelo con el del más barato.${pricingNote}`;
 
+  const limitHtml = monthlyLimit
+    ? `<div class="usage-limit${monthlyLimit.reached ? ' is-reached' : ''}">
+        <span>Tu límite este mes: <strong>${formatUsd(monthlyLimit.spentUSD)}</strong> de ${formatUsd(monthlyLimit.limitUSD)}</span>
+        ${planMeterHtml(Math.min(100, (monthlyLimit.spentUSD / (monthlyLimit.limitUSD || 1)) * 100))}
+        ${monthlyLimit.reached ? '<span>Has llegado al límite: pídele al administrador que lo amplíe o usa tu propia clave de API.</span>' : ''}
+      </div>`
+    : '';
+
   body.innerHTML = `
+    ${limitHtml}
     <div class="usage-summary">
       <span class="usage-total">${subscription ? `${formatTokens(totalTokens)} tokens` : formatUsd(usage.totalCostUSD)}</span>
       <span class="usage-total-label">desde el ${escapeHtml(since)}</span>
@@ -3421,6 +3476,21 @@ function setupShell() {
   document.getElementById('plan-chip')?.addEventListener('click', openUsageModal);
   document.getElementById('plan-alert')?.addEventListener('click', handlePlanAlertClick);
   document.getElementById('btn-user-security')?.addEventListener('click', openSecurityModal);
+  document.getElementById('btn-user-admin')?.addEventListener('click', openUsersModal);
+  document.getElementById('btn-close-users')?.addEventListener('click', closeUsersModal);
+  document.getElementById('users-list')?.addEventListener('click', handleUsersListClick);
+  document.getElementById('btn-users-secondary')?.addEventListener('click', () => {
+    if (editingUser === null) closeUsersModal();
+    else showUsersList();
+  });
+  document.getElementById('btn-users-primary')?.addEventListener('click', () => {
+    if (editingUser === null) showUserForm();
+    else submitUserForm();
+  });
+  document.getElementById('user-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    submitUserForm();
+  });
   document.getElementById('btn-close-security')?.addEventListener('click', closeSecurityModal);
   document.getElementById('security-password-form')?.addEventListener('submit', handleSecurityPasswordSubmit);
   document.getElementById('btn-logout-all')?.addEventListener('click', handleLogoutAll);
@@ -3463,8 +3533,299 @@ function setupShell() {
       closePersonalizeModal();
       closeUsageModal();
       closeSecurityModal();
+      closeUsersModal();
     }
   });
+}
+
+// --- Usuario actual (rol y permisos) -------------------------------------------
+function isAdminUser() {
+  return !currentUser || currentUser.role === 'admin';
+}
+
+function applyCurrentUser(user) {
+  currentUser = user;
+  if (user.username && user.username !== currentUsername) {
+    setCurrentUsername(user.username);
+    if (shellReady) updateUserIdentity();
+  }
+  const admin = isAdminUser();
+  // Lo que solo puede tocar el admin: usuarios, catálogo de modelos y reinicio del gasto
+  const usersBtn = document.getElementById('btn-user-admin');
+  if (usersBtn) usersBtn.hidden = !admin;
+  for (const id of ['btn-nav-add-model', 'btn-open-add-model', 'btn-reset-usage']) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = admin ? '' : 'none';
+  }
+  const recovery = document.getElementById('security-recovery-hint');
+  if (recovery && !admin) recovery.textContent = 'Si la olvidas, pídele al administrador que te ponga una nueva.';
+  applyAllowedModes();
+}
+
+// --- Permisos de herramientas ---------------------------------------------------
+const pendingPermissions = new Map();
+
+function permissionTitle(req) {
+  const { verb, target } = describeTool(req.tool, req.input);
+  return { verb, target };
+}
+
+function renderPermissionDock() {
+  const dock = document.getElementById('permission-dock');
+  if (!dock) return;
+
+  // Conservar las tarjetas ya pintadas (y lo que se esté escribiendo en ellas)
+  for (const card of dock.querySelectorAll('.permission-card')) {
+    if (!pendingPermissions.has(card.dataset.id) && !card.classList.contains('is-settled')) card.remove();
+  }
+  for (const req of pendingPermissions.values()) {
+    if (dock.querySelector(`.permission-card[data-id="${CSS.escape(req.id)}"]`)) continue;
+    dock.appendChild(buildPermissionCard(req));
+    markToolCardWaiting(req.toolUseId, true);
+  }
+  dock.hidden = dock.children.length === 0;
+  if (!dock.hidden) scrollToBottom();
+}
+
+function buildPermissionCard(req) {
+  const { verb, target } = permissionTitle(req);
+  const otherChat = req.sessionId && activeSessionId && req.sessionId !== activeSessionId;
+  const card = document.createElement('div');
+  card.className = 'permission-card';
+  card.dataset.id = req.id;
+  card.innerHTML = `
+    <div class="permission-head">
+      <svg class="permission-icon"><use href="#i-shield"/></svg>
+      <div class="permission-title">
+        <strong>Claude pide permiso</strong>
+        <span>${escapeHtml(verb)}${target ? ` <code>${escapeHtml(target)}</code>` : ''}</span>
+        ${otherChat ? '<span class="permission-note">En otra conversación</span>' : ''}
+      </div>
+    </div>
+    <details class="permission-detail">
+      <summary>Ver detalles</summary>
+      ${toolDetailHtml(req.tool, req.input)}
+    </details>
+    <div class="permission-actions">
+      <button type="button" class="btn-text" data-action="deny">Denegar</button>
+      <button type="button" class="btn-text" data-action="always" title="No volverá a preguntar por ${escapeHtml(req.tool)} en esta conversación">Permitir siempre ${escapeHtml(req.tool)}</button>
+      <button type="button" class="btn-primary-terracotta" data-action="allow">Permitir</button>
+    </div>
+  `;
+  card.querySelector('.permission-actions').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    respondPermission(req.id, action !== 'deny', action === 'always');
+  });
+  return card;
+}
+
+function respondPermission(id, allow, always = false) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    showToast('Sin conexión con el servidor: vuelve a intentarlo en un momento');
+    return;
+  }
+  ws.send(JSON.stringify({ type: 'permission_response', id, allow, always }));
+  const card = document.querySelector(`.permission-card[data-id="${CSS.escape(id)}"]`);
+  card?.querySelectorAll('button').forEach(b => { b.disabled = true; });
+}
+
+// El servidor confirma la respuesta (desde este u otro dispositivo, o porque la tarea terminó)
+function settlePermissionCard(id, allowed) {
+  const req = pendingPermissions.get(id);
+  pendingPermissions.delete(id);
+  if (req) markToolCardWaiting(req.toolUseId, false);
+  const dock = document.getElementById('permission-dock');
+  const card = dock?.querySelector(`.permission-card[data-id="${CSS.escape(id)}"]`);
+  if (!card) return;
+  card.classList.add('is-settled', allowed ? 'is-allowed' : 'is-denied');
+  card.querySelector('.permission-actions').innerHTML = `<span class="permission-result">${allowed ? 'Permitido' : 'Denegado'}</span>`;
+  setTimeout(() => {
+    card.remove();
+    dock.hidden = dock.children.length === 0;
+  }, 1200);
+}
+
+function markToolCardWaiting(toolUseId, waiting) {
+  const card = toolUseId ? currentToolCards.get(toolUseId) : null;
+  if (card) card.classList.toggle('is-waiting', waiting);
+}
+
+// --- Gestión de usuarios (admin) ----------------------------------------------
+let usersCache = [];
+let editingUser = null; // null = lista; '' = nuevo; nombre = editando
+
+async function openUsersModal() {
+  closeAllDropdowns();
+  closeMobileSidebar();
+  document.getElementById('users-modal').style.display = 'flex';
+  showUsersList();
+  try {
+    const res = await authFetch('/api/users');
+    const data = await res.json();
+    if (data.success) {
+      usersCache = data.users;
+      renderUsersList();
+    } else {
+      document.getElementById('users-list').innerHTML = `<div class="usage-empty">${escapeHtml(data.error || 'No se pudieron cargar los usuarios')}</div>`;
+    }
+  } catch (err) {
+    document.getElementById('users-list').innerHTML = '<div class="usage-empty">No se pudieron cargar los usuarios</div>';
+  }
+}
+
+function closeUsersModal() {
+  const modal = document.getElementById('users-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function showUsersList() {
+  editingUser = null;
+  document.getElementById('users-modal-title').textContent = 'Usuarios';
+  document.getElementById('users-list-view').hidden = false;
+  document.getElementById('user-form').hidden = true;
+  document.getElementById('btn-users-secondary').textContent = 'Cerrar';
+  document.getElementById('btn-users-primary').textContent = 'Nuevo usuario';
+}
+
+const MODE_SHORT_LABELS = { manual: 'Manual', acceptEdits: 'Aceptar ediciones', plan: 'Plan', auto: 'Autónomo' };
+
+function renderUsersList() {
+  const list = document.getElementById('users-list');
+  if (!usersCache.length) {
+    list.innerHTML = '<div class="usage-empty">Todavía no hay usuarios</div>';
+    return;
+  }
+  list.innerHTML = usersCache.map(u => {
+    const admin = u.role === 'admin';
+    const limit = u.monthlyLimitUSD === null || u.monthlyLimitUSD === undefined
+      ? 'Sin límite'
+      : `${formatUsd(u.monthSpentUSD || 0)} de ${formatUsd(u.monthlyLimitUSD)} este mes`;
+    return `
+      <div class="user-row" data-username="${escapeHtml(u.username)}">
+        <div class="user-row-main">
+          <div class="user-row-name">
+            ${escapeHtml(u.username)}
+            <span class="user-role-chip${admin ? ' is-admin' : ''}">${admin ? 'Admin' : 'Usuario'}</span>
+            ${u.mustChangePassword && !admin ? '<span class="user-role-chip">Contraseña temporal</span>' : ''}
+          </div>
+          <div class="user-row-meta">
+            ${admin
+              ? 'Acceso completo · se configura desde el .env'
+              : `${u.roots.map(r => `<code>${escapeHtml(r)}</code>`).join(' ')}<br>${u.allowedModes.map(m => escapeHtml(MODE_SHORT_LABELS[m] || m)).join(' · ')} · ${escapeHtml(limit)}`}
+          </div>
+        </div>
+        ${admin ? '' : `
+          <div class="user-row-actions">
+            <button type="button" class="btn-text" data-action="edit">Editar</button>
+            <button type="button" class="btn-text security-danger" data-action="delete">Eliminar</button>
+          </div>`}
+      </div>`;
+  }).join('');
+}
+
+async function handleUsersListClick(e) {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const username = btn.closest('.user-row')?.dataset.username;
+  if (!username) return;
+
+  if (btn.dataset.action === 'edit') {
+    showUserForm(usersCache.find(u => u.username === username));
+    return;
+  }
+
+  // Eliminar: confirmación en el propio botón
+  if (!btn.dataset.confirm) {
+    btn.dataset.confirm = '1';
+    btn.textContent = '¿Seguro? Borra también sus chats';
+    return;
+  }
+  try {
+    const res = await authFetch(`/api/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      usersCache = data.users;
+      renderUsersList();
+      showToast(`Usuario ${username} eliminado`);
+    } else {
+      showToast(data.error || 'No se pudo eliminar el usuario');
+    }
+  } catch (err) {
+    showToast('No se pudo eliminar el usuario');
+  }
+}
+
+function showUserForm(user = null) {
+  editingUser = user ? user.username : '';
+  const isNew = !user;
+  document.getElementById('users-modal-title').textContent = isNew ? 'Nuevo usuario' : `Editar ${user.username}`;
+  document.getElementById('users-list-view').hidden = true;
+  const form = document.getElementById('user-form');
+  form.hidden = false;
+  form.reset();
+
+  const nameInput = document.getElementById('user-form-name');
+  nameInput.value = user ? user.username : '';
+  nameInput.disabled = !isNew;
+  document.getElementById('user-form-password-label').textContent = isNew ? 'Contraseña temporal' : 'Nueva contraseña';
+  document.getElementById('user-form-password').placeholder = isNew ? 'Mínimo 8 caracteres' : 'Déjalo vacío para no cambiarla';
+  document.getElementById('user-form-password-hint').textContent = isNew
+    ? 'Tendrá que cambiarla la primera vez que entre.'
+    : 'Si pones una, se cerrarán sus sesiones y tendrá que cambiarla al entrar.';
+  document.getElementById('user-form-roots').value = user ? user.roots.join('\n') : (currentWorkspace || '');
+  const modes = user ? user.allowedModes : ['manual', 'acceptEdits', 'plan'];
+  document.querySelectorAll('#user-form-modes input').forEach(cb => { cb.checked = modes.includes(cb.value); });
+  document.getElementById('user-form-limit').value = user && user.monthlyLimitUSD !== null ? user.monthlyLimitUSD : '';
+  document.getElementById('user-form-status').style.display = 'none';
+
+  document.getElementById('btn-users-secondary').textContent = 'Volver';
+  document.getElementById('btn-users-primary').textContent = isNew ? 'Crear usuario' : 'Guardar cambios';
+  (isNew ? nameInput : document.getElementById('user-form-roots')).focus();
+}
+
+function setUserFormStatus(message) {
+  const box = document.getElementById('user-form-status');
+  box.className = 'key-status-box error';
+  box.textContent = message;
+  box.style.display = 'flex';
+}
+
+async function submitUserForm() {
+  const isNew = editingUser === '';
+  const password = document.getElementById('user-form-password').value;
+  const limitRaw = document.getElementById('user-form-limit').value.trim();
+  const body = {
+    roots: document.getElementById('user-form-roots').value.split(/\r?\n/).map(s => s.trim()).filter(Boolean),
+    allowedModes: [...document.querySelectorAll('#user-form-modes input:checked')].map(cb => cb.value),
+    monthlyLimitUSD: limitRaw === '' ? null : Number(limitRaw)
+  };
+  if (isNew) {
+    body.username = document.getElementById('user-form-name').value.trim();
+    body.password = password;
+  } else if (password) {
+    body.password = password;
+  }
+
+  try {
+    const res = await authFetch(isNew ? '/api/users' : `/api/users/${encodeURIComponent(editingUser)}`, {
+      method: isNew ? 'POST' : 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!data.success) {
+      setUserFormStatus(data.error || 'No se pudo guardar el usuario');
+      return;
+    }
+    usersCache = data.users;
+    showToast(isNew ? `Usuario ${data.user.username} creado` : 'Cambios guardados');
+    showUsersList();
+    renderUsersList();
+  } catch (err) {
+    setUserFormStatus('Error al conectar con el servidor');
+  }
 }
 
 function escapeHtml(str) {
