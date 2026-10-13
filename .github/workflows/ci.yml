@@ -1,0 +1,60 @@
+# CI: se ejecuta en cada push a la rama principal y en cada PR.
+# Los PRs de Dependabot que pasan todos los jobs se mergean automáticamente.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (Node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Instalar Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+      - name: Comprobar sintaxis
+        run: find . -name '*.js' -not -path './node_modules/*' -print0 | xargs -0 -r -n1 node --check
+
+  # Si todos los jobs anteriores pasan y el PR es de Dependabot, se hace merge solo.
+  # Las subidas de versión major se quedan abiertas para revisarlas a mano.
+  automerge:
+    name: Auto-merge Dependabot
+    needs: [test]
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - name: Leer datos del PR de Dependabot
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+      - name: Merge (patch/minor o seguridad no-major)
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge "$PR_URL" --squash --delete-branch
