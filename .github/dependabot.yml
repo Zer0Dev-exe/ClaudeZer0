@@ -1,0 +1,15 @@
+# Configuración de Dependabot: actualizaciones semanales agrupadas.
+# Las actualizaciones de seguridad se abren al momento (activadas en Settings).
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
