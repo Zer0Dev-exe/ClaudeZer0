@@ -1,0 +1,236 @@
+# Instaladores: Windows (.exe), Linux (.deb x64 y ARM), macOS (.dmg) y Android (.apk).
+# - Al publicar un release: los compila, los prueba y los adjunta al release (con SHA256SUMS.txt).
+# - En los PR que tocan el empaquetado: los compila y prueba, y quedan como artefactos del workflow.
+# - A mano (Actions -> Instaladores -> Run workflow): para un tag ya existente.
+name: Instaladores
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag del release (por ejemplo v1.2.0)'
+        required: true
+  pull_request:
+    paths:
+      - 'packaging/**'
+      - '.github/workflows/release.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: instaladores-${{ github.event.release.tag_name || inputs.tag || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 24
+  PNPM_VERSION: 10
+
+jobs:
+  version:
+    name: Versión
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      version: ${{ steps.v.outputs.version }}
+      ref: ${{ steps.v.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: v
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          TAG="${RELEASE_TAG:-$INPUT_TAG}"
+          if [ -n "$TAG" ]; then
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+            echo "ref=$TAG" >> "$GITHUB_OUTPUT"
+          else
+            # PR: versión del package.json marcada como de prueba
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            echo "version=$(node -p 'require("./package.json").version')-pr${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            echo "ref=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  windows:
+    name: Windows (.exe)
+    needs: version
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Preparar la app
+        run: bash packaging/stage-app.sh "$PWD/dist/stage"
+      - name: Probar la app preparada
+        run: bash packaging/smoke-test.sh dist/stage/runtime/node.exe dist/stage/app
+      - name: Instalar Inno Setup si falta
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+      - name: Compilar el instalador
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.version.outputs.version }}" "/DStageDir=$PWD\dist\stage" "/DOutputDir=$PWD\dist\out" packaging\windows\ClaudeZer0.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Probar el instalador (instalación silenciosa)
+        run: |
+          SETUP="$(ls dist/out/*.exe)"
+          "$SETUP" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART
+          INSTALLED="$LOCALAPPDATA/Programs/ClaudeZer0"
+          ls "$INSTALLED"
+          bash packaging/smoke-test.sh "$INSTALLED/runtime/node.exe" "$INSTALLED/app"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/out/*.exe
+          if-no-files-found: error
+
+  linux:
+    name: Linux (.deb ${{ matrix.arch }})
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Preparar la app
+        run: bash packaging/stage-app.sh "$PWD/dist/stage"
+      - name: Construir el .deb
+        run: bash packaging/linux/build-deb.sh "${{ needs.version.outputs.version }}" "${{ matrix.arch }}" "$PWD/dist/stage" "$PWD/dist/out"
+      - name: Probar el .deb (instalar, arrancar y desinstalar)
+        run: |
+          sudo apt-get install -y "$PWD/$(ls dist/out/*.deb)"
+          claudezer0 version
+          bash packaging/smoke-test.sh /opt/claudezer0/runtime/node /opt/claudezer0/app
+          sudo apt-get remove -y claudezer0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist/out/*.deb
+          if-no-files-found: error
+
+  macos:
+    name: macOS (.dmg)
+    needs: version
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Preparar la app
+        run: bash packaging/stage-app.sh "$PWD/dist/stage"
+      - name: Construir ClaudeZer0.app y el .dmg
+        run: |
+          # hdiutil a veces falla en los runners con «Resource busy»: reintentar
+          for i in 1 2 3; do bash packaging/macos/build-dmg.sh "${{ needs.version.outputs.version }}" "$PWD/dist/stage" "$PWD/dist/out" && break; sleep 10; done
+          ls dist/out/*.dmg
+      - name: Probar el .dmg (montar y arrancar)
+        run: |
+          MOUNT="$(mktemp -d)"
+          hdiutil attach "$(ls dist/out/*.dmg)" -mountpoint "$MOUNT" -nobrowse
+          RES="$MOUNT/ClaudeZer0.app/Contents/Resources"
+          codesign --verify "$MOUNT/ClaudeZer0.app"
+          bash packaging/smoke-test.sh "$RES/runtime/node" "$RES/app"
+          hdiutil detach "$MOUNT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/out/*.dmg
+          if-no-files-found: error
+
+  android:
+    name: Android (.apk)
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Clave de firma
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.p12"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.p12" >> "$GITHUB_ENV"
+          elif [ -n "${{ needs.version.outputs.tag }}" ]; then
+            echo "Falta el secreto ANDROID_KEYSTORE_BASE64: un release no se puede firmar con la clave de depuración"; exit 1
+          else
+            echo "Sin clave de firma: se firma con la de depuración (solo para probar)"
+          fi
+      - name: Compilar el APK
+        env:
+          APP_VERSION: ${{ needs.version.outputs.version }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: gradle -p packaging/android assembleRelease --no-daemon
+      - name: Verificar la firma
+        run: |
+          APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
+          mkdir -p dist/out
+          cp packaging/android/app/build/outputs/apk/release/app-release.apk "dist/out/ClaudeZer0-${{ needs.version.outputs.version }}.apk"
+          "$APKSIGNER" verify --print-certs dist/out/*.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/out/*.apk
+          if-no-files-found: error
+
+  publish:
+    name: Adjuntar al release
+    needs: [version, windows, linux, macos, android]
+    if: needs.version.outputs.tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Subir instaladores y SHA256SUMS.txt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release upload "$TAG" * --clobber --repo "${{ github.repository }}"

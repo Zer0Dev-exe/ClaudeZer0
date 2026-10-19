@@ -3944,6 +3944,8 @@ let deferredInstallPrompt = null;
 const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+// App de Android (WebView): expone window.ClaudeZer0Android para volver a la pantalla de elegir servidor
+const inAndroidApp = () => typeof window.ClaudeZer0Android?.changeServer === 'function';
 
 if ('serviceWorker' in navigator && window.isSecureContext) {
   navigator.serviceWorker.register('/sw.js').catch(err => console.warn('Service worker no registrado:', err));
@@ -4033,6 +4035,17 @@ async function renderAppModal() {
   if (!installHint || !pushHint) return;
 
   installBtn.hidden = true;
+  installBtn.textContent = 'Instalar app';
+  delete installBtn.dataset.action;
+  if (inAndroidApp()) {
+    installHint.textContent = 'Estás usando la app de Android, conectada a este servidor.';
+    installBtn.textContent = 'Cambiar de servidor';
+    installBtn.dataset.action = 'change-server';
+    installBtn.hidden = false;
+    pushHint.innerHTML = 'La app de Android no recibe notificaciones push. Si quieres los avisos, instala ClaudeZer0 desde <strong>Chrome</strong> (menú ⋮ → <em>Instalar aplicación</em>).';
+    pushBtn.hidden = true;
+    return;
+  }
   if (!window.isSecureContext) {
     installHint.innerHTML = 'Para instalarla hace falta abrir ClaudeZer0 por <strong>HTTPS</strong>. Instálala en el servidor con <code>bash deploy/install-linux.sh --tailscale</code> y entra por la dirección <code>https://…ts.net</code>.';
   } else if (isStandalone()) {
@@ -4085,7 +4098,11 @@ function setupAppInstall() {
     if (e.target.id === 'app-modal') closeAppModal();
   });
 
-  document.getElementById('btn-app-install')?.addEventListener('click', async () => {
+  document.getElementById('btn-app-install')?.addEventListener('click', async (e) => {
+    if (e.currentTarget.dataset.action === 'change-server') {
+      window.ClaudeZer0Android.changeServer();
+      return;
+    }
     if (!deferredInstallPrompt) return;
     deferredInstallPrompt.prompt();
     await deferredInstallPrompt.userChoice.catch(() => null);
