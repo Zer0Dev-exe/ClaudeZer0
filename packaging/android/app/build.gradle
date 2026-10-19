@@ -1,0 +1,53 @@
+plugins {
+    id 'com.android.application'
+}
+
+// La versión llega del release (APP_VERSION=1.2.0); versionCode: 1.2.3 -> 10203
+def appVersion = System.getenv('APP_VERSION') ?: '0.0.0'
+def numbers = (appVersion =~ /^(\d+)\.(\d+)\.(\d+)/)
+def appVersionCode = numbers.find() ? numbers.group(1).toInteger() * 10000 + numbers.group(2).toInteger() * 100 + numbers.group(3).toInteger() : 1
+
+// Firma del release: el keystore llega por variables de entorno (secretos de GitHub).
+// Sin ellas se firma con la clave de depuración, solo para probar.
+def keystoreFile = System.getenv('KEYSTORE_FILE')
+
+android {
+    namespace 'es.zer0dev.claudezer0'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'es.zer0dev.claudezer0'
+        minSdk 26
+        targetSdk 35
+        versionCode appVersionCode
+        versionName appVersion
+    }
+
+    signingConfigs {
+        release {
+            if (keystoreFile) {
+                storeFile file(keystoreFile)
+                storeType 'pkcs12'
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KEY_ALIAS') ?: 'claudezer0'
+                keyPassword System.getenv('KEYSTORE_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig keystoreFile ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

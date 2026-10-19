@@ -1,10 +1,11 @@
-import 'dotenv/config';
+import './env.js';
 import express from 'express';
 import http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 
 import {
@@ -19,6 +20,7 @@ import {
 import { getPushPublicKey, addSubscription, removeSubscription, forgetUserPush, notifyUser } from './pushManager.js';
 
 import { isRestricted, isPathAllowed, isModeAllowed, toolPathViolation } from './accessPolicy.js';
+import { DATA_DIR } from './paths.js';
 
 import {
   setPermissionNotifier,
@@ -905,6 +907,20 @@ server.listen(PORT, HOST, () => {
   console.log(`📡 Modo (.env):         MODE=${currentMode} (${currentMode === 'Hoster' ? 'Cuenta compartida del anfitrión' : 'Cada cliente usa su propia key'})`);
   console.log(`🤖 Cuenta Claude:       ${authSummary}`);
   console.log(`👤 Administrador:       ${getAdminUsername()}`);
-  console.log(`🔑 Contraseña:          ${isUsingDefaultPassword() ? '⚠️ Por defecto: se pedirá cambiarla al entrar' : 'Guardada cifrada en data/auth.json'}`);
+  console.log(`🔑 Contraseña:          ${isUsingDefaultPassword() ? '⚠️ Por defecto: se pedirá cambiarla al entrar' : `Guardada cifrada en ${path.join(DATA_DIR, 'auth.json')}`}`);
   console.log('====================================================');
+
+  // Los accesos directos de los instaladores (Windows y macOS) abren la web al arrancar
+  if (process.env.CLAUDEZER0_OPEN_BROWSER === '1') openInBrowser(`http://localhost:${PORT}`);
 });
+
+function openInBrowser(url) {
+  const [cmd, args] = process.platform === 'win32'
+    ? ['cmd', ['/c', 'start', '""', url]]
+    : process.platform === 'darwin' ? ['open', [url]] : ['xdg-open', [url]];
+  try {
+    spawn(cmd, args, { stdio: 'ignore', detached: true, windowsHide: true }).unref();
+  } catch (err) {
+    console.warn('No se pudo abrir el navegador:', err.message);
+  }
+}

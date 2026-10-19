@@ -1,12 +1,11 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import webpush from 'web-push';
+import { DATA_DIR } from './paths.js';
 
 // Notificaciones push de la app instalada (PWA): avisan de que Claude ha terminado o necesita
 // permiso aunque la app esté cerrada. Las claves VAPID se generan una vez y se guardan en data/.
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dataDir = path.resolve(__dirname, '..', 'data');
+const dataDir = DATA_DIR;
 const pushPath = path.join(dataDir, 'push.json');
 
 function load() {

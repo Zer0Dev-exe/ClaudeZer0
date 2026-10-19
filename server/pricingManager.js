@@ -1,10 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { DATA_DIR } from './paths.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const pricingFilePath = path.resolve(__dirname, '..', 'data', 'pricing.json');
+const pricingFilePath = path.join(DATA_DIR, 'pricing.json');
 
 // Página oficial de precios en Markdown (la misma tabla que platform.claude.com/docs/en/about-claude/pricing)
 const PRICING_URL = 'https://platform.claude.com/docs/en/about-claude/pricing.md';

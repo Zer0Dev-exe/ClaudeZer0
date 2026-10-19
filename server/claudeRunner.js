@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { fileURLToPath } from 'url';
+import { DATA_DIR } from './paths.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,7 +52,7 @@ export function mapModelToCli(model) {
   return m;
 }
 
-const clientConfigDir = path.join(projectRoot, 'data', '.client_claude_config');
+const clientConfigDir = path.join(DATA_DIR, '.client_claude_config');
 if (!fs.existsSync(clientConfigDir)) {
   try {
     fs.mkdirSync(clientConfigDir, { recursive: true });
@@ -120,7 +121,7 @@ const CLI_PERMISSION_MODES = {
 const PERMISSION_TOOL = 'mcp__claudezer0__approve';
 const permissionMcpScript = path.join(__dirname, 'permissionMcp.js');
 
-const tmpDir = path.join(projectRoot, 'data', '.tmp');
+const tmpDir = path.join(DATA_DIR, '.tmp');
 if (!fs.existsSync(tmpDir)) {
   try {
     fs.mkdirSync(tmpDir, { recursive: true });

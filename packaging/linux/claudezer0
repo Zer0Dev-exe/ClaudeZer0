@@ -1,0 +1,69 @@
+#!/bin/sh
+# Comando «claudezer0» del paquete .deb. El programa está en /opt/claudezer0 y los datos de cada
+# usuario en ~/.config/claudezer0 (.env) y ~/.local/share/claudezer0 (conversaciones, usuarios, claves).
+set -e
+
+APP=/opt/claudezer0
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/claudezer0"
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/claudezer0"
+SERVICE="claudezer0@$(id -un)"
+
+prepare() {
+  mkdir -p "$CONF_DIR" "$DATA_DIR"
+  [ -f "$CONF_DIR/.env" ] || cp "$APP/app/.env.example" "$CONF_DIR/.env"
+  export CLAUDEZER0_DATA_DIR="$DATA_DIR" CLAUDEZER0_ENV_FILE="$CONF_DIR/.env"
+}
+
+case "${1:-run}" in
+  run|start)
+    prepare
+    exec "$APP/runtime/node" "$APP/app/server/index.js"
+    ;;
+  login)
+    exec "$APP/app/node_modules/.bin/claude" auth login
+    ;;
+  status)
+    "$APP/app/node_modules/.bin/claude" auth status || true
+    systemctl status "$SERVICE" --no-pager 2>/dev/null || echo "El servicio no está activado (claudezer0 enable)."
+    ;;
+  enable)
+    prepare
+    sudo systemctl enable --now "$SERVICE"
+    echo "ClaudeZer0 arrancará solo al encender la máquina, con el usuario $(id -un)."
+    echo "Logs: claudezer0 logs"
+    ;;
+  disable)
+    sudo systemctl disable --now "$SERVICE"
+    ;;
+  restart)
+    sudo systemctl restart "$SERVICE"
+    ;;
+  logs)
+    exec journalctl -u "$SERVICE" -f
+    ;;
+  config)
+    prepare
+    exec "${EDITOR:-nano}" "$CONF_DIR/.env"
+    ;;
+  version|--version|-v)
+    "$APP/runtime/node" -p "require('$APP/app/package.json').version"
+    ;;
+  help|--help|-h|*)
+    cat <<EOF
+Uso: claudezer0 [comando]
+
+  run       Arrancar ClaudeZer0 en primer plano (por defecto)
+  login     Vincular tu cuenta de Claude (Pro, Max o Team)
+  enable    Activarlo como servicio: arranca solo y sigue aunque cierres el SSH
+  disable   Desactivar el servicio
+  restart   Reiniciar el servicio
+  status    Ver la cuenta de Claude y el estado del servicio
+  logs      Ver los logs del servicio en directo
+  config    Editar la configuración (.env)
+  version   Ver la versión instalada
+
+Configuración: $CONF_DIR/.env
+Datos:         $DATA_DIR
+EOF
+    ;;
+esac
