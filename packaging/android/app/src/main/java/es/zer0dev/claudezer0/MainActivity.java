@@ -41,7 +41,9 @@ import android.widget.TextView;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.ConnectException;
 import java.net.HttpURLConnection;
+import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
@@ -196,6 +198,10 @@ public class MainActivity extends Activity {
             return "No se encuentra el servidor. Revisa la dirección y, si usas Tailscale, que esté activo en el móvil.";
         } catch (SSLException e) {
             return "El certificado HTTPS del servidor no es válido.";
+        } catch (ConnectException e) {
+            return "No hay ningún servidor de ClaudeZer0 en esa dirección. Comprueba que está arrancado, el puerto y que el móvil está en la misma red (o con Tailscale activo).";
+        } catch (SocketTimeoutException e) {
+            return "El servidor no responde. Comprueba que el móvil llega a él (misma Wi-Fi o Tailscale activo).";
         } catch (IOException | IllegalArgumentException e) {
             return "No se puede conectar: " + e.getMessage();
         } finally {
