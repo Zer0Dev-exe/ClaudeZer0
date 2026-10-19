@@ -1,13 +1,10 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { getModelPricing } from './pricingManager.js';
+import { DATA_DIR } from './paths.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const projectRoot = path.resolve(__dirname, '..');
-const modelsFilePath = path.join(projectRoot, 'data', 'models.json');
+const modelsFilePath = path.join(DATA_DIR, 'models.json');
 
 const ANTHROPIC_API = 'https://api.anthropic.com';
 

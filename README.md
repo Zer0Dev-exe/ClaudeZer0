@@ -13,7 +13,7 @@
   <a href="https://github.com/Zer0Dev-exe/ClaudeZer0/releases/latest"><img src="https://img.shields.io/github/v/release/Zer0Dev-exe/ClaudeZer0?style=flat-square&color=D97757&label=versi%C3%B3n" alt="Versión"></a>
   <img src="https://img.shields.io/badge/Plataforma-Windows%20%7C%20Linux%20%7C%20macOS-informational?style=flat-square" alt="Multiplataforma">
   <img src="https://img.shields.io/badge/App-Android%20%7C%20iPhone-success?style=flat-square" alt="App móvil">
-  <img src="https://img.shields.io/badge/Node.js-%3E%3D18-success?style=flat-square&logo=node.js&logoColor=white" alt="Node.js">
+  <img src="https://img.shields.io/badge/Node.js-%3E%3D22-success?style=flat-square&logo=node.js&logoColor=white" alt="Node.js">
   <img src="https://img.shields.io/badge/Licencia-MIT-blue?style=flat-square" alt="Licencia MIT">
 </p>
 
@@ -36,9 +36,75 @@ Claude Code es potente, pero vive en una terminal. ClaudeZer0 lo pone en una web
 
 ---
 
-## 🚀 Empieza en un minuto
+## 📦 Descargar
 
-Necesitas [Node.js](https://nodejs.org) 18 o superior y [pnpm](https://pnpm.io) (o npm).
+Descarga el instalador de tu sistema en la [**última versión**](https://github.com/Zer0Dev-exe/ClaudeZer0/releases/latest). Incluyen Node.js y Claude Code: no hace falta tener nada más instalado.
+
+| Sistema | Archivo | Qué instala |
+| :--- | :--- | :--- |
+| 🪟 **Windows 10 y 11** (x64) | `ClaudeZer0-Setup-…-x64.exe` | El servidor, con accesos en el menú Inicio |
+| 🐧 **Debian y Ubuntu** (x64 y ARM) | `claudezer0_…_amd64.deb` · `claudezer0_…_arm64.deb` | El servidor y el comando `claudezer0` |
+| 🍎 **macOS 12 o superior** (Apple Silicon) | `ClaudeZer0-…-arm64.dmg` | ClaudeZer0.app |
+| 🤖 **Android 8 o superior** | `ClaudeZer0-….apk` | La app que se conecta a tu servidor |
+
+Cada versión trae un `SHA256SUMS.txt` para comprobar que la descarga está intacta.
+
+<details>
+<summary><b>🪟 Windows</b></summary>
+
+1. Ejecuta `ClaudeZer0-Setup-…-x64.exe`. Se instala para tu usuario, sin pedir permisos de administrador.
+2. En el menú Inicio, abre **Vincular cuenta de Claude** e inicia sesión.
+3. Abre **ClaudeZer0**: arranca el servidor y abre la web. Mientras la ventana esté abierta, ClaudeZer0 funciona.
+
+Opcionalmente, el instalador puede hacer que arranque solo al encender el equipo. Tu configuración y tus conversaciones se guardan en `%APPDATA%\ClaudeZer0` y se conservan al actualizar o desinstalar.
+
+> [!NOTE]
+> Como el instalador no está firmado con un certificado de pago, Windows muestra **«Windows protegió su PC»**: pulsa *Más información* → *Ejecutar de todas formas*. La primera vez, el firewall pregunta si ClaudeZer0 puede usar la red. Acepta si quieres entrar desde el móvil.
+</details>
+
+<details>
+<summary><b>🐧 Debian y Ubuntu</b></summary>
+
+```bash
+sudo apt install ./claudezer0_*_amd64.deb   # o el _arm64.deb (Raspberry Pi y servidores ARM)
+claudezer0 login     # vincula tu cuenta de Claude
+claudezer0 enable    # lo deja como servicio: arranca solo y sigue aunque cierres el SSH
+```
+
+Usa tu propio usuario, no root, para que Claude pueda trabajar en tus proyectos. `claudezer0 help` muestra todos los comandos: `logs`, `config`, `restart`, `status`… La configuración está en `~/.config/claudezer0/.env` y los datos en `~/.local/share/claudezer0`.
+</details>
+
+<details>
+<summary><b>🍎 macOS</b></summary>
+
+1. Abre el `.dmg` y arrastra **ClaudeZer0** a *Aplicaciones*.
+2. Vincula tu cuenta de Claude desde la Terminal:
+   ```bash
+   /Applications/ClaudeZer0.app/Contents/Resources/app/node_modules/.bin/claude auth login
+   ```
+3. Abre ClaudeZer0: arranca el servidor y abre la web. Para pararlo, sal de la app desde el Dock.
+
+Tus datos se guardan en `~/Library/Application Support/ClaudeZer0`.
+
+> [!NOTE]
+> La app no está notarizada por Apple (hace falta una cuenta de desarrollador de pago), así que la primera vez macOS no la deja abrir. Ve a **Ajustes del Sistema → Privacidad y seguridad** y pulsa **Abrir igualmente**. Solo hay que hacerlo una vez.
+</details>
+
+<details>
+<summary><b>🤖 Android</b></summary>
+
+1. Descarga el `.apk` en el móvil y ábrelo. Android pedirá permitir instalar apps desde el navegador o el gestor de archivos: es el aviso normal para cualquier app que no viene de Play Store.
+2. Abre ClaudeZer0 y escribe la dirección de **tu** servidor, por ejemplo `https://mi-servidor.tailnet.ts.net` o `http://192.168.1.50:5050`. La app comprueba que es un servidor de ClaudeZer0 y la recuerda.
+3. Para cambiar de servidor: menú de usuario → **App y notificaciones** → *Cambiar de servidor*.
+
+La app de Android no recibe notificaciones push. Si quieres que el móvil te avise cuando Claude termine, instala la app desde Chrome (PWA, más abajo); puedes tener las dos.
+</details>
+
+---
+
+## 🚀 Desde el código fuente
+
+Necesitas [Node.js](https://nodejs.org) 22 o superior y [pnpm](https://pnpm.io) (o npm).
 
 ```bash
 git clone https://github.com/Zer0Dev-exe/ClaudeZer0.git
@@ -227,7 +293,9 @@ Varias personas pueden usar el mismo servidor, cada una con su cuenta. Es especi
 
 ```
 ClaudeZer0/
-├── deploy/install-linux.sh        # Instalación como servicio systemd (+ HTTPS con Tailscale)
+├── deploy/install-linux.sh        # Instalación desde el código como servicio systemd (+ HTTPS con Tailscale)
+├── packaging/                     # Instaladores: Windows (Inno Setup), .deb, .dmg y app de Android
+├── .github/workflows/release.yml  # Compila, prueba y adjunta los instaladores a cada release
 ├── docs/screenshots/              # Capturas del README
 ├── server/
 │   ├── index.js                   # Servidor Express y WebSocket
