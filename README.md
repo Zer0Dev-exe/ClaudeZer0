@@ -2,149 +2,203 @@
   <img src="banner.svg" alt="ClaudeZer0" width="100%">
 </p>
 
+<h3 align="center">Claude Code en tu navegador y en tu móvil. Desde tu propio servidor.</h3>
+
 <p align="center">
-  <strong>La interfaz web y móvil definitiva, multiplataforma y elegante para Claude Code</strong>
+  Lanza una tarea desde el sofá, cierra la app y recibe un aviso cuando Claude termine.<br>
+  Una interfaz cálida al estilo de claude.ai, sobre el Claude Code de siempre.
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Plataforma-Windows%20%7C%20Linux%20%7C%20macOS-informational?style=flat-square&logo=linux" alt="Multiplataforma">
-  <img src="https://img.shields.io/badge/Node.js-%3E%3D18-success?style=flat-square&logo=node.js" alt="Node.js">
-  <img src="https://img.shields.io/badge/Claude%20Code-2.1.303-D97757?style=flat-square" alt="Claude Code">
-  <img src="https://img.shields.io/badge/Modos-Hoster%20%7C%20Client-orange?style=flat-square" alt="Modos">
-  <img src="https://img.shields.io/badge/Licencia-MIT-blue?style=flat-square" alt="Licencia">
+  <a href="https://github.com/Zer0Dev-exe/ClaudeZer0/releases/latest"><img src="https://img.shields.io/github/v/release/Zer0Dev-exe/ClaudeZer0?style=flat-square&color=D97757&label=versi%C3%B3n" alt="Versión"></a>
+  <img src="https://img.shields.io/badge/Plataforma-Windows%20%7C%20Linux%20%7C%20macOS-informational?style=flat-square" alt="Multiplataforma">
+  <img src="https://img.shields.io/badge/App-Android%20%7C%20iPhone-success?style=flat-square" alt="App móvil">
+  <img src="https://img.shields.io/badge/Node.js-%3E%3D18-success?style=flat-square&logo=node.js&logoColor=white" alt="Node.js">
+  <img src="https://img.shields.io/badge/Licencia-MIT-blue?style=flat-square" alt="Licencia MIT">
 </p>
 
----
-
-## 🌟 ¿Qué es ClaudeZer0?
-
-**ClaudeZer0** transforma el CLI de **Claude Code** en una experiencia web y móvil ultra fluida, inspirada en el diseño visual de **Claude.ai**: paleta cálida con tema claro y oscuro y toques terracota, tipografía editorial *Newsreader Serif*, streaming en tiempo real con razonamiento desplegable (*thinking process*), explorador interactivo de proyectos y ejecución multiplataforma.
-
 <p align="center">
-  <img src="dashboard.png" alt="ClaudeZer0: pantalla de inicio con barra lateral, saludo y selector de modelo" width="100%">
+  <img src="docs/screenshots/hero.jpg" alt="ClaudeZer0 en el escritorio y en el móvil: una conversación con herramientas y una petición de permiso" width="100%">
 </p>
 
 ---
 
-## ✨ Características Principales
+## ¿Por qué ClaudeZer0?
 
-- 🌐 **100% Multiplataforma**: Funciona de forma idéntica y nativa en **Windows** (CMD/PowerShell), **Linux** (Ubuntu, Debian, Arch, Fedora) y **macOS**.
-- 🛡️ **Soporte de Doble Modo (`MODE=Hoster` / `MODE=Client`)**:
-  - **`MODE=Hoster`**: El anfitrión comparte su cuenta o suscripción Pro con los usuarios conectados a la red local.
-  - **`MODE=Client`**: Aislamiento estricto de credenciales. La cuenta del anfitrión queda 100% blindada y cada cliente usa su propia clave API personal guardada localmente en su navegador.
-- 🎨 **Diseño Claude Oficial con SVGs Nativos**: Cero emojis genéricos. Todos los selectores de modelos, modos de ejecución, tarjetas de inicio y diálogos emplean vectores SVG afilados y personalizados.
-- ⚡ **Selector de Modelos Claude**:
-  - **Claude Fable 5.1**: Para los desafíos más difíciles.
-  - **Claude Opus 5.5**: El más capaz para trabajos ambiciosos (por defecto).
-  - **Claude Sonnet 5**: Lo más eficiente para las tareas diarias.
-  - **Claude Haiku 4.5**: Respuestas inmediatas y máxima velocidad.
-- 🎛️ **Modos de Ejecución**:
-  - **Aceptar ediciones** (`acceptEdits`): Edita archivos sin preguntar y pide permiso para los comandos.
-  - **Autónomo** (`auto`): Flujo continuo sin pausas de confirmación.
-  - **Manual** (`manual`): Pide permiso antes de cada acción.
-  - **Modo Plan** (`plan`): Análisis y planificación previa antes de aplicar código.
-- ✅ **Permisos desde la Web**: Cuando Claude necesita permiso para una herramienta, aparece una tarjeta sobre la caja de texto con **Denegar**, **Permitir siempre en este chat** o **Permitir**, junto con el diff o el comando que quiere ejecutar. Funciona también desde el móvil y las peticiones pendientes reaparecen al reconectar.
-- 👥 **Multiusuario**: El administrador crea usuarios con su propia contraseña, carpetas permitidas, modos de ejecución y límite de gasto mensual. Cada uno ve solo sus conversaciones. [Ver más](#-multiusuario).
-- 📱 **Diseño Móvil Adaptativo (PWA)**: Accede desde tu smartphone o tablet conectado a la misma red WiFi con soporte PWA, barra de estado translúcida y favicon personalizado.
-- 📂 **Explorador Visual de Carpetas**: Cambia el directorio de trabajo activo del agente con un explorador interactivo y accesos directos a directorios raíz (`C:\` en Windows, `/` en Linux).
-- 🎙️ **Entrada por Voz**: Dicta prompts directamente mediante reconocimiento de voz integrado en el navegador.
+Claude Code es potente, pero vive en una terminal. ClaudeZer0 lo pone en una web que puedes abrir desde cualquier dispositivo, sin renunciar a nada:
+
+- **📱 Una app en tu móvil.** Se instala desde el navegador en Android y iPhone, con su icono y a pantalla completa. Sin tiendas y sin avisos de seguridad.
+- **⏳ Sigue trabajando aunque cierres.** Las tareas se ejecutan en el servidor: bloquea el móvil, vuelve en una hora y la respuesta estará ahí, continuando en directo.
+- **🔔 Te avisa.** Notificación cuando Claude termina, falla o necesita tu permiso. Al tocarla, se abre esa conversación.
+- **✅ Tú decides.** Antes de ejecutar un comando o editar un archivo, ves el diff o el comando y apruebas con un toque.
+- **👥 Para ti o para tu equipo.** Varios usuarios, cada uno con sus carpetas, sus modos y su límite de gasto.
+- **🔒 Es tuyo.** Corre en tu PC o en tu VPS. Tus claves y conversaciones no salen de ahí.
 
 ---
 
-## 🚀 Instalación Rápida
+## 🚀 Empieza en un minuto
 
-### Requisitos Previos
-- **Node.js** (versión 18 o superior; recomendada la LTS actual).
-- Gestor de paquetes **pnpm** (recomendado) o **npm**.
+Necesitas [Node.js](https://nodejs.org) 18 o superior y [pnpm](https://pnpm.io) (o npm).
 
-### 1. Clonar el Repositorio
 ```bash
 git clone https://github.com/Zer0Dev-exe/ClaudeZer0.git
 cd ClaudeZer0
-```
-
-### 2. Instalar Dependencias
-Con **pnpm**:
-```bash
 pnpm install
-```
-O con **npm**:
-```bash
-npm install
-```
-
-### 3. Vincular la Cuenta de Claude del Anfitrión (Solo la primera vez)
-
-Si vas a usar **`MODE=Hoster`** (compartir tu cuenta con los usuarios conectados), tienes dos formas:
-
-- **Opción A: Con tu Suscripción de Claude Pro / Team (Recomendada con `pnpm`)**
-  Ejecuta el atajo interactivo en tu terminal:
-  ```bash
-  pnpm auth:login
-  ```
-  Se abrirá tu navegador para iniciar sesión con tu cuenta de Anthropic/Claude. La sesión quedará guardada de forma permanente y segura en tu equipo local. Puedes comprobar el estado en cualquier momento con:
-  ```bash
-  pnpm auth:status
-  ```
-
-- **Opción B: Con tu propia API Key de Anthropic (`ANTHROPIC_API_KEY`)**
-  Si prefieres usar créditos de [console.anthropic.com](https://console.anthropic.com) o estás en un VPS sin entorno gráfico, simplemente define tu clave en el archivo `.env`:
-  ```env
-  ANTHROPIC_API_KEY=sk-ant-api03-...
-  ```
-
-### 4. Configurar el Archivo `.env`
-Edita o crea el archivo `.env` en la raíz del proyecto (puedes basarte en `.env.example`):
-
-```env
-# Modo de uso:
-# - MODE=Hoster  -> Compartes tu cuenta/suscripción Pro local con los demás.
-# - MODE=Client  -> Cada cliente debe configurar su propia Claude API Key.
-MODE=Hoster
-
-# Credenciales del administrador (el resto de usuarios se crean desde la web):
-CLAUDEZER0_USER=admin
-CLAUDEZER0_PASSWORD=claudezer0
-
-# Puerto del servidor web
-PORT=5050
-```
-
-### 5. Iniciar el Servidor
-En modo producción:
-```bash
+pnpm auth:login      # vincula tu suscripción de Claude (o pon ANTHROPIC_API_KEY en .env)
 pnpm start
-# o: npm start
 ```
 
-En modo desarrollo con recarga automática:
-```bash
-pnpm dev
-# o: npm run dev
-```
+Abre **http://localhost:5050** y entra con `admin` / `claudezer0`. La primera vez te pedirá cambiar la contraseña.
 
-### 6. Abrir la Interfaz
-- **Desde tu PC**: Visita [http://localhost:5050](http://localhost:5050)
-- **Desde tu Móvil u otro equipo en la red**: Visita `http://<TU_IP_LOCAL>:5050` (ejemplo: `http://192.168.1.50:5050`)
+¿Lo quieres en un servidor y en el móvil? Mira [Instalar en un servidor](#servidor): es un solo comando.
 
 ---
 
-## 🔒 Comparativa de Modos
+## 📱 En tu móvil, como una app más
 
-| Característica | `MODE=Hoster` | `MODE=Client` |
+<p align="center">
+  <img src="docs/screenshots/mobile.jpg" alt="Tres móviles: pantalla de inicio, tarea con permiso pendiente y ventana para instalar la app" width="100%">
+</p>
+
+- **Se instala desde el navegador.** En Android (Chrome): ⋮ → *Instalar aplicación*. En iPhone (Safari): Compartir → *Añadir a pantalla de inicio*.
+- **Notificaciones push** cuando no tienes la app a la vista. En iPhone necesitan iOS 16.4 o superior y la app instalada.
+- **Abre al instante** y, sin conexión, muestra la app en vez de un error del navegador.
+- **Dictado por voz** para escribir sin teclado.
+
+Todo se activa desde el menú de usuario → **App y notificaciones**.
+
+---
+
+## ✅ Tú tienes el control
+
+<p align="center">
+  <img src="docs/screenshots/permissions.jpg" alt="Tarjeta de permiso: Claude pide ejecutar una migración y ofrece Denegar, Permitir siempre o Permitir" width="100%">
+</p>
+
+Cuando Claude necesita usar una herramienta, aparece una tarjeta con lo que quiere hacer: el comando exacto o el diff del archivo. Eliges **Denegar**, **Permitir siempre** en esa conversación o **Permitir**. Las peticiones pendientes te esperan en todos tus dispositivos y reaparecen al reconectar.
+
+Elige cuánta libertad le das en cada momento:
+
+| Modo | Qué hace |
+| :--- | :--- |
+| **Manual** | Pide permiso antes de cada acción. |
+| **Aceptar ediciones** | Edita archivos sin preguntar y pide permiso para los comandos. |
+| **Autónomo** | Trabaja sin pausas de confirmación. |
+| **Plan** | Analiza y propone un plan antes de tocar nada. |
+
+---
+
+## 🎨 Claro, oscuro o como tu sistema
+
+<p align="center">
+  <img src="docs/screenshots/themes.jpg" alt="La misma conversación partida en diagonal entre el tema claro y el oscuro" width="100%">
+</p>
+
+Paleta cálida con acentos terracota y tipografía editorial, inspirada en claude.ai. Mientras Claude trabaja ves cómo piensa (razonamiento desplegable), cada herramienta que usa y el diff de cada cambio, en tiempo real.
+
+---
+
+## ✨ Todo lo que incluye
+
+| Función | Qué te da |
+| :--- | :--- |
+| 🤖 **Modelos** | Selector con el catálogo de Claude sincronizado con Anthropic (Fable, Opus, Sonnet, Haiku) y nivel de esfuerzo. |
+| 📂 **Proyectos** | Explorador de carpetas para elegir dónde trabaja Claude, con carpetas recientes. |
+| 📎 **Adjuntos** | Imágenes y archivos con vista previa. Son temporales: no se guardan en el historial. |
+| 🕶️ **Incógnito** | Conversaciones que no se guardan y se borran al salir. |
+| 📊 **Uso y gasto** | Límites de tu suscripción (sesión y semana) y gasto por modelo. |
+| ⌨️ **Comandos** | Escribe `/` para ver los atajos disponibles. |
+| 🛡️ **Seguridad** | Contraseñas cifradas, cambio obligatorio en el primer acceso y cierre de sesión en todos los dispositivos. |
+| 💻 **Multiplataforma** | Windows, Linux y macOS. |
+
+---
+
+<a id="servidor"></a>
+
+## 🖥️ Instalar en un servidor (SSH)
+
+En un servidor Linux con systemd (un VPS, una Raspberry Pi o un PC al que entras por SSH):
+
+```bash
+git clone https://github.com/Zer0Dev-exe/ClaudeZer0.git
+cd ClaudeZer0
+pnpm auth:login                          # o ANTHROPIC_API_KEY en .env
+bash deploy/install-linux.sh --tailscale
+```
+
+El script instala las dependencias, crea el `.env` si no existe y deja ClaudeZer0 como **servicio del sistema**:
+- Arranca solo al encender la máquina y se reinicia si falla.
+- **Sigue funcionando aunque cierres la sesión SSH.**
+
+Con `--tailscale`, la web queda publicada en `https://<tu-maquina>.<tu-red>.ts.net` con un **certificado HTTPS válido** y solo es accesible desde tus dispositivos de [Tailscale](https://tailscale.com), sin abrir puertos en el router. Sin esa opción, se sirve por HTTP en el puerto del `.env`.
+
+| Para… | Comando |
+| :--- | :--- |
+| Ver el estado | `systemctl status claudezer0` |
+| Ver los logs en directo | `journalctl -u claudezer0 -f` |
+| Reiniciar | `sudo systemctl restart claudezer0` |
+
+### Instalar la app en el móvil
+
+1. Instala Tailscale en el móvil e inicia sesión con la misma cuenta.
+2. Abre la dirección `https://…ts.net` que muestra el script.
+3. Instala la app: **Android** (Chrome) → ⋮ → *Instalar aplicación*. **iPhone** (Safari) → Compartir → *Añadir a pantalla de inicio*.
+4. Dentro de la app: menú de usuario → **App y notificaciones** → *Activar notificaciones*.
+
+### Cada instalación es independiente
+
+La app no es un instalador común: se instala **desde tu propio servidor** y solo habla con él. Quien instale ClaudeZer0 en su máquina tendrá su propia app, sin acceso a la tuya.
+
+- Las claves de las notificaciones, los usuarios, las contraseñas y las sesiones se generan en cada servidor, dentro de `data/`. Esa carpeta nunca se sube al repositorio, igual que el `.env`.
+- Para entrar hace falta un usuario de ese servidor. Con Tailscale, además, solo llegan tus propios dispositivos.
+- Dale a tu app su propio nombre con `APP_NAME` en el `.env` (por ejemplo `APP_NAME=Claude VPS`).
+
+---
+
+## ⚙️ Configuración
+
+Todo se configura en el archivo `.env` (parte de `.env.example`):
+
+```env
+# Hoster: compartes tu cuenta de Claude con los usuarios. Client: cada uno pone su propia clave.
+MODE=Hoster
+
+# Administrador. El resto de usuarios se crean desde la web.
+CLAUDEZER0_USER=admin
+CLAUDEZER0_PASSWORD=claudezer0
+
+# Nombre de la app en el móvil y en la pestaña
+# APP_NAME=ClaudeZer0
+
+PORT=5050
+# Pon 127.0.0.1 para que solo se pueda entrar desde este equipo (p. ej. con Tailscale)
+# HOST=127.0.0.1
+
+# Opcional: clave de API en vez de suscripción (ideal en un VPS sin navegador)
+# ANTHROPIC_API_KEY=sk-ant-api03-...
+```
+
+La contraseña del `.env` solo se usa la primera vez. Después se guarda cifrada y se cambia desde la web (**Perfil → Seguridad**). Si la olvidas, pon una nueva en el `.env` y reinicia.
+
+### Cuenta de Claude: dos formas
+
+- **Con tu suscripción (Pro, Max o Team):** ejecuta `pnpm auth:login`. Se abre el navegador para iniciar sesión y la sesión queda guardada en el equipo. Compruébala con `pnpm auth:status`.
+- **Con una clave de API:** pon `ANTHROPIC_API_KEY` en el `.env`, con créditos de [console.anthropic.com](https://console.anthropic.com).
+
+### Modos Hoster y Client
+
+| | `MODE=Hoster` | `MODE=Client` |
 | :--- | :--- | :--- |
-| **Cuenta Utilizada** | La cuenta del host (Suscripción Pro local o variable en `.env`) | Cada cliente usa su propia `ANTHROPIC_API_KEY` (`sk-ant-...`) |
-| **Protección del Host** | El anfitrión comparte su cuota de uso | **Blindaje total**: Las credenciales del host son invisibles e inaccesibles |
-| **Dónde se Guarda la Key** | Configuración local del servidor | Privadamente en el `localStorage` del navegador del cliente |
-| **Ideal para...** | Redes domésticas privadas, talleres o uso familiar | Compartir el servidor con amigos, compañeros o miembros de equipo |
+| **Cuenta que se usa** | La del anfitrión (suscripción o clave del `.env`) | La clave de API de cada persona |
+| **Cuenta del anfitrión** | Se comparte su cuota de uso | Totalmente aislada e inaccesible |
+| **Dónde se guarda la clave** | En el servidor | En el navegador de cada persona |
+| **Ideal para** | Uso personal, familia o un equipo de confianza | Compartir el servidor con más gente |
 
 ---
 
 ## 👥 Multiusuario
 
-ClaudeZer0 admite varios usuarios en el mismo servidor. Es especialmente útil en **`MODE=Hoster`**: cada persona entra con su propia cuenta y el anfitrión decide hasta dónde llega cada una con su suscripción.
-
-### Roles
+Varias personas pueden usar el mismo servidor, cada una con su cuenta. Es especialmente útil en `MODE=Hoster`: el anfitrión decide hasta dónde llega cada usuario con su suscripción.
 
 | | Administrador | Usuario |
 | :--- | :--- | :--- |
@@ -154,123 +208,49 @@ ClaudeZer0 admite varios usuarios en el mismo servidor. Es especialmente útil e
 | **Límite de gasto** | Sin límite | Límite mensual opcional |
 | **Gestionar usuarios, modelos y gasto** | Sí | No |
 
-### Crear un usuario
+**Crear un usuario:** menú de tu perfil (abajo a la izquierda) → **Usuarios** → **Nuevo usuario**. Indica:
+- Una contraseña temporal, que tendrá que cambiar al entrar.
+- Sus carpetas permitidas, una por línea.
+- Los modos que puede usar.
+- Si quieres, un límite mensual en USD.
 
-1. Entra como administrador.
-2. Abre el menú de tu perfil (abajo a la izquierda) → **Usuarios** → **Nuevo usuario**.
-3. Rellena:
-   - **Usuario** y **contraseña temporal** (mínimo 8 caracteres). Tendrá que cambiarla la primera vez que entre.
-   - **Carpetas permitidas**: una ruta por línea. Solo podrá elegir esas carpetas como proyecto.
-   - **Modos de ejecución**: por defecto Manual, Aceptar ediciones y Plan.
-   - **Límite mensual (USD)**: déjalo vacío para no poner límite.
+**Qué queda separado:** cada usuario tiene sus propias conversaciones, carpeta de proyecto, tareas (una en marcha a la vez, sin bloquear a los demás), peticiones de permiso y gasto. El administrador ve el gasto total.
 
-Desde la misma pantalla puedes editar un usuario, ponerle una contraseña nueva (se cierran sus sesiones abiertas) o eliminarlo (se borran también sus conversaciones).
+**Límite mensual:** cuenta lo gastado con la cuenta del anfitrión en el mes natural, a precio de tarifa de la API. Con suscripción es un equivalente, no un cobro real. Si el usuario pone su propia clave, ese gasto no cuenta.
 
-### Qué queda separado por usuario
-
-- **Conversaciones**: cada uno ve solo las suyas.
-- **Carpeta de proyecto**: cada uno tiene la suya.
-- **Tareas**: cada usuario puede tener una tarea en marcha a la vez sin bloquear a los demás.
-- **Permisos**: las tarjetas de aprobación solo le llegan al dueño de la tarea, en todos sus dispositivos.
-- **Gasto**: cada usuario ve su propio uso; el administrador ve el total.
-
-### Límite mensual
-
-Cuenta lo gastado **con la cuenta del anfitrión** en el mes natural, a precio de tarifa de la API (con suscripción es un equivalente, no un cobro real). Si el usuario configura su propia clave de API, ese gasto no cuenta. Al llegar al límite no puede enviar más mensajes hasta que el administrador lo amplíe o empiece el mes siguiente.
-
-### Seguridad
-
-- Las lecturas y ediciones de archivos fuera de las carpetas permitidas **se deniegan automáticamente**, sin preguntar.
-- Los **comandos de terminal (Bash)** no se pueden limitar por carpeta. En los modos Manual y Aceptar ediciones siempre pasan por la tarjeta de aprobación, pero en **Autónomo** se ejecutan sin preguntar. Concede ese modo solo a personas de total confianza.
-- Si un usuario olvida su contraseña, el administrador puede ponerle una nueva desde **Usuarios**. Si la olvida el administrador, basta con cambiar `CLAUDEZER0_PASSWORD` en el `.env` y reiniciar el servidor.
-
-Los usuarios se guardan en `data/users.json` con las contraseñas cifradas (scrypt). Si actualizas desde una versión anterior, tus conversaciones y sesiones pasan automáticamente al administrador.
+> [!WARNING]
+> Las lecturas y ediciones fuera de las carpetas permitidas se deniegan automáticamente, pero los **comandos de terminal (Bash)** no se pueden limitar por carpeta. En **Autónomo** se ejecutan sin preguntar: concede ese modo solo a personas de total confianza.
 
 ---
 
-## 🖥️ Instalar en un servidor (SSH) y usarlo desde el móvil
-
-En un servidor Linux con systemd (VPS, Raspberry Pi, un PC al que entras por SSH):
-
-```bash
-git clone https://github.com/Zer0Dev-exe/ClaudeZer0.git
-cd ClaudeZer0
-pnpm auth:login                          # o ANTHROPIC_API_KEY en .env
-bash deploy/install-linux.sh --tailscale
-```
-
-El script instala las dependencias, crea el `.env` si no existe y deja ClaudeZer0 como **servicio del sistema**: arranca solo al encender la máquina, se reinicia si falla y **sigue funcionando aunque cierres la sesión SSH**. Comandos útiles: `systemctl status claudezer0`, `journalctl -u claudezer0 -f`.
-
-Con `--tailscale` la web queda publicada en `https://<tu-maquina>.<tu-red>.ts.net` con un **certificado HTTPS válido** y solo accesible desde tus dispositivos de [Tailscale](https://tailscale.com) (sin abrir puertos en el router). Sin la opción, se sirve por HTTP en el puerto del `.env`.
-
-### Instalar la app en el móvil
-
-1. Instala Tailscale en el móvil e inicia sesión con la misma cuenta.
-2. Abre la dirección `https://...ts.net` que muestra el script.
-3. **Android (Chrome):** menú ⋮ → *Instalar aplicación*. **iPhone (Safari):** Compartir → *Añadir a pantalla de inicio*.
-
-4. Dentro de la app: menú de usuario → **App y notificaciones** → *Activar notificaciones*.
-
-Se instala como una app más (icono, pantalla completa, sin barra del navegador) y sin avisos de seguridad, porque la conexión es HTTPS con certificado real. Con las notificaciones activadas, el móvil te avisa cuando Claude termina una tarea o necesita tu permiso mientras no tienes la app a la vista; al tocar el aviso se abre esa conversación. En iPhone (iOS 16.4 o superior) las notificaciones solo funcionan desde la app instalada, no desde Safari.
-
-### Cada instalación es independiente
-
-La app del móvil no es un instalador común: se instala **desde tu propio servidor** y solo habla con él. Quien instale ClaudeZer0 en su máquina tendrá su propia app, sin acceso a la tuya:
-
-- Las claves de las notificaciones, los usuarios, las contraseñas y las sesiones se generan en cada servidor dentro de `data/`, que nunca se sube al repositorio (igual que el `.env`).
-- Para entrar hace falta un usuario de ese servidor, y con Tailscale solo llegan tus propios dispositivos.
-- Puedes darle a tu app su propio nombre con `APP_NAME` en el `.env` (por ejemplo `APP_NAME=Claude VPS`).
-
-### Las tareas siguen aunque cierres la app
-
-Las tareas se ejecutan en el servidor, no en el navegador. Si cierras la pestaña, bloqueas el móvil o pierdes la conexión, Claude sigue trabajando; al volver, la conversación recupera lo que se ha generado mientras tanto y continúa en directo.
-
----
-
-## 📁 Estructura del Proyecto
+## 📁 Estructura del proyecto
 
 ```
 ClaudeZer0/
-├── banner.svg                     # Banner del repositorio
-├── .env                           # Variables de entorno y modo
-├── package.json                   # Dependencias y scripts
 ├── deploy/install-linux.sh        # Instalación como servicio systemd (+ HTTPS con Tailscale)
+├── docs/screenshots/              # Capturas del README
 ├── server/
 │   ├── index.js                   # Servidor Express y WebSocket
-│   ├── claudeRunner.js            # Runner multiplataforma (Win/Linux/macOS)
-│   ├── workspaceManager.js        # Explorador de carpetas del sistema
-│   ├── sessionManager.js          # Historial de chats en JSON (por usuario)
+│   ├── claudeRunner.js            # Ejecuta Claude Code (Windows, Linux y macOS)
+│   ├── sessionManager.js          # Historial de conversaciones (por usuario)
 │   ├── auth.js                    # Autenticación, sesiones y usuarios
 │   ├── accessPolicy.js            # Carpetas y modos permitidos por usuario
 │   ├── permissionManager.js       # Peticiones de permiso pendientes
 │   ├── permissionMcp.js           # Servidor MCP que pide permisos a la web
 │   ├── pushManager.js             # Notificaciones push de la app instalada
-│   └── usageManager.js            # Gasto por modelo y límite mensual
+│   ├── modelsManager.js           # Catálogo de modelos
+│   ├── usageManager.js            # Gasto por modelo, límites del plan y límite mensual
+│   └── workspaceManager.js        # Explorador de carpetas
 └── public/
-    ├── favicon.svg                # Favicon oficial estilo Claude
-    ├── icon.svg                   # Icono de aplicación / PWA
-    ├── manifest.json              # Configuración PWA móvil
-    ├── sw.js                      # Service worker (instalación, sin conexión y push)
-    ├── index.html                 # Interfaz SPA Claude.ai
-    ├── css/style.css              # Sistema de diseño con variables HSL
-    └── js/app.js                  # Lógica del cliente y WebSockets
+    ├── index.html                 # Interfaz
+    ├── css/style.css              # Estilos (tema claro y oscuro)
+    ├── js/app.js                  # Lógica del cliente
+    ├── manifest.json              # App instalable (PWA)
+    └── sw.js                      # Service worker: instalación, sin conexión y notificaciones
 ```
-
----
-
-## 💻 Compatibilidad Multiplataforma
-
-ClaudeZer0 detecta automáticamente el sistema operativo anfitrión:
-
-| Sistema Operativo | Detección de Binario | Invocación de Procesos | Navegación de Carpetas |
-| :--- | :--- | :--- | :--- |
-| **Windows** | `node_modules/.bin/claude.cmd` | `spawn('cmd.exe', ['/c', ...])` | `C:\`, `Documents`, `Desktop` |
-| **Linux** | `node_modules/.bin/claude` | `spawn(bin, args)` (Shebang nativo) | `/`, `/var/www`, `~` |
-| **macOS** | `node_modules/.bin/claude` | `spawn(bin, args)` (Shebang nativo) | `/`, `~/Documents`, `~` |
 
 ---
 
 ## 📄 Licencia
 
-Este proyecto está bajo la Licencia [MIT](LICENSE).
-Inspirado y diseñado para acompañar el ecosistema de [Claude Code](https://claude.ai) de Anthropic.
+[MIT](LICENSE). Hecho para acompañar a [Claude Code](https://claude.com/claude-code) de Anthropic. No es un producto oficial de Anthropic.
