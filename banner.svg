@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" role="img" aria-label="ClaudeZer0">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1f1e1b"/>
+      <stop offset="1" stop-color="#2b2925"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#d97757" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#d97757" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.2" fill="#faf9f5" fill-opacity="0.06"/>
+    </pattern>
+  </defs>
+
+  <rect width="1280" height="320" fill="url(#bg)"/>
+  <rect width="1280" height="320" fill="url(#dots)"/>
+  <circle cx="640" cy="160" r="360" fill="url(#glow)"/>
+
+  <!-- Destello genérico (el mismo de la app) -->
+  <g transform="translate(332 104) scale(4.667)" fill="none" stroke="#d97757" stroke-linecap="round">
+    <path d="M12 2v7M12 15v7M2 12h7M15 12h7M4.9 4.9l4.6 4.6M14.5 14.5l4.6 4.6M4.9 19.1l4.6-4.6M14.5 9.5l4.6-4.6" stroke-width="2.2"/>
+    <path d="M7.9 2.8l1.7 4.1M14.4 17.1l1.7 4.1M2.8 16.1l4.1-1.7M17.1 9.6l4.1-1.7M16.1 2.8l-1.7 4.1M9.6 17.1l-1.7 4.1M2.8 7.9l4.1 1.7M17.1 14.4l4.1 1.7" stroke-width="1.6"/>
+  </g>
+
+  <text x="470" y="186" font-family="Georgia, 'Times New Roman', serif" font-size="92" fill="#faf9f5" letter-spacing="-1">Claude<tspan fill="#d97757">Zer<tspan font-family="'Times New Roman', Times, serif">0</tspan></tspan></text>
+  <text x="474" y="232" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" fill="#faf9f5" fill-opacity="0.62">Claude Code desde el navegador y el móvil</text>
+</svg>
