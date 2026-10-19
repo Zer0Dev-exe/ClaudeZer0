@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://media.discordapp.net/attachments/1405460793998315633/1551872426302771320/image.png?ex=6ab38d52&is=6ab23bd2&hm=2aeb4d6257524a08b9c76369cde7b18472ff7549a895c4636b707d8cf8483ea5&=&format=webp&quality=lossless" alt="ClaudeZer0 Banner" width="100%">
+  <img src="banner.svg" alt="ClaudeZer0" width="100%">
 </p>
 
 <p align="center">
@@ -188,13 +188,53 @@ Los usuarios se guardan en `data/users.json` con las contraseñas cifradas (scry
 
 ---
 
+## 🖥️ Instalar en un servidor (SSH) y usarlo desde el móvil
+
+En un servidor Linux con systemd (VPS, Raspberry Pi, un PC al que entras por SSH):
+
+```bash
+git clone https://github.com/Zer0Dev-exe/ClaudeZer0.git
+cd ClaudeZer0
+pnpm auth:login                          # o ANTHROPIC_API_KEY en .env
+bash deploy/install-linux.sh --tailscale
+```
+
+El script instala las dependencias, crea el `.env` si no existe y deja ClaudeZer0 como **servicio del sistema**: arranca solo al encender la máquina, se reinicia si falla y **sigue funcionando aunque cierres la sesión SSH**. Comandos útiles: `systemctl status claudezer0`, `journalctl -u claudezer0 -f`.
+
+Con `--tailscale` la web queda publicada en `https://<tu-maquina>.<tu-red>.ts.net` con un **certificado HTTPS válido** y solo accesible desde tus dispositivos de [Tailscale](https://tailscale.com) (sin abrir puertos en el router). Sin la opción, se sirve por HTTP en el puerto del `.env`.
+
+### Instalar la app en el móvil
+
+1. Instala Tailscale en el móvil e inicia sesión con la misma cuenta.
+2. Abre la dirección `https://...ts.net` que muestra el script.
+3. **Android (Chrome):** menú ⋮ → *Instalar aplicación*. **iPhone (Safari):** Compartir → *Añadir a pantalla de inicio*.
+
+4. Dentro de la app: menú de usuario → **App y notificaciones** → *Activar notificaciones*.
+
+Se instala como una app más (icono, pantalla completa, sin barra del navegador) y sin avisos de seguridad, porque la conexión es HTTPS con certificado real. Con las notificaciones activadas, el móvil te avisa cuando Claude termina una tarea o necesita tu permiso mientras no tienes la app a la vista; al tocar el aviso se abre esa conversación. En iPhone (iOS 16.4 o superior) las notificaciones solo funcionan desde la app instalada, no desde Safari.
+
+### Cada instalación es independiente
+
+La app del móvil no es un instalador común: se instala **desde tu propio servidor** y solo habla con él. Quien instale ClaudeZer0 en su máquina tendrá su propia app, sin acceso a la tuya:
+
+- Las claves de las notificaciones, los usuarios, las contraseñas y las sesiones se generan en cada servidor dentro de `data/`, que nunca se sube al repositorio (igual que el `.env`).
+- Para entrar hace falta un usuario de ese servidor, y con Tailscale solo llegan tus propios dispositivos.
+- Puedes darle a tu app su propio nombre con `APP_NAME` en el `.env` (por ejemplo `APP_NAME=Claude VPS`).
+
+### Las tareas siguen aunque cierres la app
+
+Las tareas se ejecutan en el servidor, no en el navegador. Si cierras la pestaña, bloqueas el móvil o pierdes la conexión, Claude sigue trabajando; al volver, la conversación recupera lo que se ha generado mientras tanto y continúa en directo.
+
+---
+
 ## 📁 Estructura del Proyecto
 
 ```
 ClaudeZer0/
-├── banner.png                     # Banner de repositorio oficial
+├── banner.svg                     # Banner del repositorio
 ├── .env                           # Variables de entorno y modo
 ├── package.json                   # Dependencias y scripts
+├── deploy/install-linux.sh        # Instalación como servicio systemd (+ HTTPS con Tailscale)
 ├── server/
 │   ├── index.js                   # Servidor Express y WebSocket
 │   ├── claudeRunner.js            # Runner multiplataforma (Win/Linux/macOS)
@@ -204,11 +244,13 @@ ClaudeZer0/
 │   ├── accessPolicy.js            # Carpetas y modos permitidos por usuario
 │   ├── permissionManager.js       # Peticiones de permiso pendientes
 │   ├── permissionMcp.js           # Servidor MCP que pide permisos a la web
+│   ├── pushManager.js             # Notificaciones push de la app instalada
 │   └── usageManager.js            # Gasto por modelo y límite mensual
 └── public/
     ├── favicon.svg                # Favicon oficial estilo Claude
     ├── icon.svg                   # Icono de aplicación / PWA
     ├── manifest.json              # Configuración PWA móvil
+    ├── sw.js                      # Service worker (instalación, sin conexión y push)
     ├── index.html                 # Interfaz SPA Claude.ai
     ├── css/style.css              # Sistema de diseño con variables HSL
     └── js/app.js                  # Lógica del cliente y WebSockets
