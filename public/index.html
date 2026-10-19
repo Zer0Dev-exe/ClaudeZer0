@@ -9,7 +9,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-title" content="ClaudeZer0">
   <link rel="manifest" href="manifest.json">
 
   <!-- Tema, acento y fuente guardados: se aplican antes de pintar para evitar parpadeos -->
@@ -71,6 +72,7 @@
     <symbol id="i-users" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M15.5 5.2a3.5 3.5 0 0 1 0 6.6M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/></g></symbol>
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 21.5s7.5-3.6 7.5-9.5V5.5L12 2.8 4.5 5.5V12c0 5.9 7.5 9.5 7.5 9.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
     <symbol id="i-gauge" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4.5 17a8.5 8.5 0 1 1 15 0"/><path d="m12 13 3.5-4"/></g></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></g></symbol>
     <symbol id="i-feather" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 4c-7 0-13 4.5-13 13v3"/><path d="M7 14h6.5M9.5 10H16"/><path d="M20 4c0 7-3.5 11-10 11"/></g></symbol>
   </svg>
 
@@ -224,6 +226,9 @@
             </button>
             <button type="button" class="menu-row" id="btn-user-security">
               <svg><use href="#i-key"/></svg><span>Seguridad</span>
+            </button>
+            <button type="button" class="menu-row" id="btn-user-app">
+              <svg><use href="#i-phone"/></svg><span>App y notificaciones</span>
             </button>
             <button type="button" class="menu-row" id="btn-user-admin" hidden>
               <svg><use href="#i-users"/></svg><span>Usuarios</span>
@@ -808,6 +813,32 @@
           <span class="pz-label">Sesiones abiertas</span>
           <p class="pz-hint">Si has entrado desde un dispositivo que ya no usas o no reconoces, ciérralas todas. Tendrás que volver a iniciar sesión también aquí.</p>
           <div><button type="button" class="btn-text security-danger" id="btn-logout-all">Cerrar sesión en todos los dispositivos</button></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL DE APP Y NOTIFICACIONES (PWA)
+       ==================================================================== -->
+  <div class="modal-overlay" id="app-modal" style="display: none;">
+    <div class="modal-dialog security-dialog">
+      <div class="modal-top">
+        <h3>App y notificaciones</h3>
+        <button class="modal-close" id="btn-close-app" aria-label="Cerrar">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <section class="pz-section">
+          <span class="pz-label">Instalar en este dispositivo</span>
+          <p class="pz-hint" id="app-install-hint"></p>
+          <div><button type="button" class="btn-primary-terracotta" id="btn-app-install" hidden>Instalar app</button></div>
+        </section>
+
+        <section class="pz-section">
+          <span class="pz-label">Notificaciones</span>
+          <p class="pz-hint" id="app-push-hint"></p>
+          <div><button type="button" class="btn-primary-terracotta" id="btn-app-push" hidden>Activar notificaciones</button></div>
         </section>
       </div>
     </div>
