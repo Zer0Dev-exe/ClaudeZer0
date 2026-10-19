@@ -1802,7 +1802,8 @@ function adjustTextareaHeight() {
 // ==========================================================================
 function setupVoice() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
+  // El WebView de la app de Android expone la API pero no dicta: mejor no ofrecer el botón
+  if (!SpeechRecognition || inAndroidApp()) {
     btnVoice.style.display = 'none';
     return;
   }
@@ -3945,7 +3946,9 @@ const isStandalone = () => window.matchMedia('(display-mode: standalone)').match
 const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 // App de Android (WebView): expone window.ClaudeZer0Android para volver a la pantalla de elegir servidor
-const inAndroidApp = () => typeof window.ClaudeZer0Android?.changeServer === 'function';
+function inAndroidApp() {
+  return typeof window.ClaudeZer0Android?.changeServer === 'function';
+}
 
 if ('serviceWorker' in navigator && window.isSecureContext) {
   navigator.serviceWorker.register('/sw.js').catch(err => console.warn('Service worker no registrado:', err));
