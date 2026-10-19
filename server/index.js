@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
+import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
@@ -14,6 +15,8 @@ import {
   getQuickLocations,
   forgetUserWorkspace
 } from './workspaceManager.js';
+
+import { getPushPublicKey, addSubscription, removeSubscription, forgetUserPush, notifyUser } from './pushManager.js';
 
 import { isRestricted, isPathAllowed, isModeAllowed, toolPathViolation } from './accessPolicy.js';
 
@@ -138,6 +141,25 @@ app.post('/internal/permission', express.json({ limit: '20mb' }), async (req, re
 });
 
 app.use(express.json());
+// Cada instalación es su propia app: el nombre sale del .env de este servidor (APP_NAME) y la
+// app instalada solo habla con él. Nada de este servidor (claves, usuarios) va en el repositorio.
+const APP_NAME = (process.env.APP_NAME || 'ClaudeZer0').trim().slice(0, 40) || 'ClaudeZer0';
+const escapeAttr = (v) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
+app.get('/manifest.json', (req, res) => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(projectRoot, 'public', 'manifest.json'), 'utf-8'));
+  manifest.name = APP_NAME;
+  manifest.short_name = APP_NAME.length > 12 ? APP_NAME.slice(0, 12).trim() : APP_NAME;
+  res.type('application/manifest+json').send(JSON.stringify(manifest));
+});
+
+app.get(['/', '/index.html'], (req, res) => {
+  const html = fs.readFileSync(path.join(projectRoot, 'public', 'index.html'), 'utf-8')
+    .replace('<title>ClaudeZer0</title>', `<title>${escapeAttr(APP_NAME)}</title>`)
+    .replace('name="apple-mobile-web-app-title" content="ClaudeZer0"', `name="apple-mobile-web-app-title" content="${escapeAttr(APP_NAME)}"`);
+  res.type('html').send(html);
+});
+
 app.use(express.static(path.join(projectRoot, 'public')));
 
 // Enviar a todos los dispositivos autenticados (datos comunes: catálogo de modelos, límites del plan)
@@ -166,7 +188,60 @@ function closeUserSockets(username, { exceptToken = null } = {}) {
   }
 }
 
-setPermissionNotifier(sendToUser);
+// ¿Tiene el usuario la web abierta y a la vista en algún dispositivo? Entonces no hace falta push
+function userIsWatching(username) {
+  for (const client of wss.clients) {
+    if (client.readyState === WebSocket.OPEN && client.isAuthenticated && client.username === username && client.visible) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Notificar al móvil solo si no está mirando la web (el service worker siempre tiene que mostrarla)
+function pushIfAway(username, payload) {
+  if (!userIsWatching(username)) notifyUser(username, payload);
+}
+
+// Avisos de permiso: a la web abierta y, por push, al móvil aunque la app esté cerrada
+setPermissionNotifier((username, data) => {
+  sendToUser(username, data);
+  if (data.type === 'permission_request' && data.request) {
+    const chat = getSession(data.request.sessionId, username);
+    const title = chat && !chat.incognito ? chat.title : null;
+    pushIfAway(username, {
+      title: 'Claude necesita permiso',
+      body: `${data.request.tool}${title ? ` · ${title}` : ''}`,
+      tag: `permission-${data.request.id}`,
+      sessionId: data.request.sessionId
+    });
+  }
+});
+
+// Resumen corto de la respuesta para la notificación
+function notificationBody(text, fallback) {
+  const clean = String(text || '').replace(/[#*_`>\[\]]/g, '').replace(/\s+/g, ' ').trim();
+  if (!clean) return fallback;
+  return clean.length > 140 ? clean.slice(0, 140) + '…' : clean;
+}
+
+// Respuesta en curso de cada usuario. La tarea no depende de la conexión: si el usuario cierra
+// la web o el móvil corta el WebSocket, Claude sigue trabajando y al volver se recupera lo hecho.
+// seq numera los eventos para que la web descarte los que ya vienen en la instantánea.
+const liveTasks = new Map();
+
+function liveTaskFor(owner, sessionId = null) {
+  const live = liveTasks.get(owner);
+  if (!live || (sessionId && live.sessionId !== sessionId)) return null;
+  return { sessionId: live.sessionId, seq: live.seq, message: live.message };
+}
+
+// Enviar un evento de la tarea en curso numerado con su seq
+function sendTaskEvent(owner, data) {
+  const live = liveTasks.get(owner);
+  if (live && live.sessionId === data.sessionId) data.seq = ++live.seq;
+  sendToUser(owner, data);
+}
 
 // Dirección a la que llama el servidor MCP de permisos (siempre en este mismo equipo)
 function permissionCallbackUrl() {
@@ -285,6 +360,7 @@ app.delete('/api/users/:username', requireAuth, requireAdmin, (req, res) => {
   }
   forgetUserWorkspace(username);
   forgetUserUsage(username);
+  forgetUserPush(username);
   res.json({ success: true, users: usersWithUsage() });
 });
 
@@ -419,10 +495,31 @@ app.post('/api/sessions', requireAuth, (req, res) => {
 app.get('/api/sessions/:id', requireAuth, (req, res) => {
   const session = getSession(req.params.id, req.user.username);
   if (session) {
-    res.json({ success: true, session });
+    res.json({ success: true, session, liveTask: liveTaskFor(req.user.username, session.id) });
   } else {
     res.status(404).json({ success: false, error: 'Conversación no encontrada' });
   }
+});
+
+// --------------------------------------------------------------------------
+// Notificaciones push (app instalada)
+// --------------------------------------------------------------------------
+app.get('/api/push/key', requireAuth, (req, res) => {
+  res.json({ success: true, publicKey: getPushPublicKey() });
+});
+
+app.post('/api/push/subscribe', requireAuth, (req, res) => {
+  try {
+    addSubscription(req.user.username, req.body?.subscription);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/push/unsubscribe', requireAuth, (req, res) => {
+  removeSubscription(req.user.username, String(req.body?.endpoint || ''));
+  res.json({ success: true });
 });
 
 app.delete('/api/sessions/:id', requireAuth, (req, res) => {
@@ -486,6 +583,7 @@ wss.on('connection', (ws) => {
   ws.isAuthenticated = false;
   ws.authToken = null;
   ws.username = null;
+  ws.visible = true;
 
   ws.on('message', (message) => {
     try {
@@ -498,13 +596,16 @@ wss.on('connection', (ws) => {
           ws.isAuthenticated = true;
           ws.authToken = data.token;
           ws.username = authUser.username;
+          ws.visible = data.visible !== false;
           ws.send(JSON.stringify({
             type: 'auth_success',
             workspace: getCurrentWorkspace(authUser),
             isTaskActive: isTaskActive(authUser.username),
             user: userInfo(authUser),
             // Peticiones de permiso que siguen esperando (p. ej. tras perder la conexión en el móvil)
-            pendingPermissions: listPendingFor(authUser.username)
+            pendingPermissions: listPendingFor(authUser.username),
+            // Respuesta que sigue generándose aunque se cerrara la web
+            liveTask: liveTaskFor(authUser.username)
           }));
         } else {
           ws.send(JSON.stringify({ type: 'auth_error', message: 'Token inválido' }));
@@ -521,6 +622,12 @@ wss.on('connection', (ws) => {
         return;
       }
       const owner = user.username;
+
+      // La web avisa cuando pasa a segundo plano o vuelve (para decidir si enviar push)
+      if (data.type === 'visibility') {
+        ws.visible = data.visible === true;
+        return;
+      }
 
       if (data.type === 'run_task') {
         const { prompt, workspace, sessionId, permissionMode, model, apiKey, attachments, effort, outputStyle, customInstructions, incognito } = data;
@@ -578,6 +685,10 @@ wss.on('connection', (ws) => {
           status: 'running'
         };
         sendToUser(owner, { type: 'assistant_start', sessionId: currentSession.id, message: assistantMsg });
+        liveTasks.set(owner, { sessionId: currentSession.id, seq: 0, message: assistantMsg });
+        const endLiveTask = () => {
+          if (liveTasks.get(owner)?.message === assistantMsg) liveTasks.delete(owner);
+        };
 
         // Puente de permisos de esta tarea: las rutas fuera de las carpetas del usuario se deniegan sin preguntar
         const permissionSecret = registerTask({
@@ -603,13 +714,13 @@ wss.on('connection', (ws) => {
             onEvent: (event) => {
               if (event.type === 'text_delta') {
                 assistantMsg.text += event.text;
-                sendToUser(owner, { type: 'stream_delta', sessionId: currentSession.id, text: event.text });
+                sendTaskEvent(owner, { type: 'stream_delta', sessionId: currentSession.id, text: event.text });
               } else if (event.type === 'thinking_delta') {
                 assistantMsg.thinking += event.thinking;
-                sendToUser(owner, { type: 'stream_thinking', sessionId: currentSession.id, thinking: event.thinking });
+                sendTaskEvent(owner, { type: 'stream_thinking', sessionId: currentSession.id, thinking: event.thinking });
               } else if (event.type === 'text_raw') {
                 assistantMsg.text += event.text + '\n';
-                sendToUser(owner, { type: 'stream_raw', sessionId: currentSession.id, text: event.text });
+                sendTaskEvent(owner, { type: 'stream_raw', sessionId: currentSession.id, text: event.text });
               } else if (event.type === 'tool_use') {
                 assistantMsg.tools.push({
                   id: event.id,
@@ -619,7 +730,7 @@ wss.on('connection', (ws) => {
                   status: 'running',
                   time: Date.now()
                 });
-                sendToUser(owner, {
+                sendTaskEvent(owner, {
                   type: 'tool_use',
                   sessionId: currentSession.id,
                   id: event.id,
@@ -630,7 +741,7 @@ wss.on('connection', (ws) => {
               } else if (event.type === 'tool_result') {
                 const toolEntry = assistantMsg.tools.find(t => t.id === event.id);
                 if (toolEntry) toolEntry.status = event.isError ? 'error' : 'done';
-                sendToUser(owner, {
+                sendTaskEvent(owner, {
                   type: 'tool_result',
                   sessionId: currentSession.id,
                   id: event.id,
@@ -641,6 +752,7 @@ wss.on('connection', (ws) => {
             },
             onDone: (result) => {
               unregisterTask(permissionSecret);
+              endLiveTask();
               assistantMsg.status = 'completed';
               if (!assistantMsg.text && result.text) {
                 assistantMsg.text = result.text;
@@ -666,6 +778,14 @@ wss.on('connection', (ws) => {
 
               addMessageToSession(currentSession.id, assistantMsg);
 
+              pushIfAway(owner, {
+                // En incógnito no se muestra nada de la conversación en la pantalla de bloqueo
+                title: currentSession.incognito ? 'Claude ha terminado' : currentSession.title || 'Claude ha terminado',
+                body: currentSession.incognito ? 'Chat incógnito' : notificationBody(assistantMsg.text, 'Claude ha terminado la tarea'),
+                tag: `task-${currentSession.id}`,
+                sessionId: currentSession.id
+              });
+
               sendToUser(owner, {
                 type: 'task_completed',
                 sessionId: currentSession.id,
@@ -677,11 +797,19 @@ wss.on('connection', (ws) => {
             },
             onError: (err) => {
               unregisterTask(permissionSecret);
+              endLiveTask();
               assistantMsg.status = 'error';
               assistantMsg.error = err.message || 'Error en la ejecución de Claude Code';
               if (err.text) assistantMsg.text = err.text;
 
               addMessageToSession(currentSession.id, assistantMsg);
+
+              pushIfAway(owner, {
+                title: 'La tarea ha fallado',
+                body: currentSession.incognito ? 'Chat incógnito' : notificationBody(assistantMsg.error, currentSession.title),
+                tag: `task-${currentSession.id}`,
+                sessionId: currentSession.id
+              });
 
               sendToUser(owner, {
                 type: 'task_error',
@@ -693,6 +821,7 @@ wss.on('connection', (ws) => {
           });
         } catch (err) {
           unregisterTask(permissionSecret);
+          endLiveTask();
           assistantMsg.status = 'error';
           assistantMsg.error = err.message;
           sendToUser(owner, {
@@ -710,6 +839,7 @@ wss.on('connection', (ws) => {
         });
       } else if (data.type === 'cancel_task') {
         const res = cancelActiveTask(owner);
+        liveTasks.delete(owner);
         sendToUser(owner, { type: 'task_canceled', result: res });
       }
     } catch (e) {

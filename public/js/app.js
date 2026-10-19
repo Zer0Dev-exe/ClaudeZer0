@@ -19,6 +19,10 @@ let currentAccumulatedThinking = '';
 // Texto del bloque visible actual (se reinicia tras cada herramienta para intercalar texto y acciones)
 let currentSegmentText = '';
 const currentToolCards = new Map();
+// Respuesta en curso recuperada del servidor: lastTaskSeq descarta eventos ya incluidos en la
+// instantánea y resyncBuffer guarda los que llegan mientras se descarga
+let lastTaskSeq = 0;
+let resyncBuffer = null;
 
 let recognition = null;
 let isListening = false;
@@ -375,6 +379,8 @@ loginForm.addEventListener('submit', async (e) => {
 });
 
 btnLogout.addEventListener('click', async () => {
+  // Este dispositivo deja de recibir avisos de la cuenta que cierra sesión
+  await disablePush().catch(() => {});
   try {
     await fetch('/api/auth/logout', {
       method: 'POST',
@@ -418,7 +424,29 @@ function initApp() {
   setupVoice();
   setupEventListeners();
   setupShell();
+  setupAppInstall();
+  // Abierta desde una notificación: ir a esa conversación
+  const fromNotification = new URLSearchParams(location.search).get('session');
+  if (fromNotification) {
+    history.replaceState(null, '', '/');
+    openSession(fromNotification);
+  }
 }
+
+let reconnectTimer = null;
+
+// Al volver a la app (el móvil corta el WebSocket en segundo plano) reconectar sin esperar
+document.addEventListener('visibilitychange', () => {
+  const visible = document.visibilityState === 'visible';
+  // El servidor solo envía notificaciones push mientras la app no está a la vista
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'visibility', visible }));
+  if (visible) clearShownNotifications();
+  if (!visible || !authToken || !ws) return;
+  if (ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+    clearTimeout(reconnectTimer);
+    connectWebSocket();
+  }
+});
 
 function connectWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -433,7 +461,7 @@ function connectWebSocket() {
   ws.onopen = () => {
     if (statusIndicator) statusIndicator.className = 'status-indicator';
     if (statusText) statusText.textContent = 'Conectado';
-    ws.send(JSON.stringify({ type: 'auth', token: authToken }));
+    ws.send(JSON.stringify({ type: 'auth', token: authToken, visible: document.visibilityState === 'visible' }));
   };
 
   ws.onclose = (event) => {
@@ -446,7 +474,8 @@ function connectWebSocket() {
       showLogin();
       return;
     }
-    setTimeout(() => {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(() => {
       if (authToken) connectWebSocket();
     }, 3000);
   };
@@ -649,19 +678,53 @@ function renderSessionsList(sessions) {
 
 async function openSession(id) {
   if (incognitoMode) setIncognito(false);
+  resyncBuffer = [];
   try {
     const res = await authFetch(`/api/sessions/${id}`);
     const data = await res.json();
     if (data.session) {
       activeSessionId = data.session.id;
       topChatTitle.textContent = data.session.title;
+      currentAssistantElement = null;
       renderMessages(data.session.messages || []);
+      if (data.liveTask) resumeLiveTask(data.liveTask);
       loadSessions();
       closeMobileSidebar();
     }
   } catch (err) {
     console.error('Error cargando sesión:', err);
+  } finally {
+    // Aplicar los eventos que llegaron durante la descarga (los ya incluidos se descartan por seq)
+    const buffered = resyncBuffer || [];
+    resyncBuffer = null;
+    buffered.forEach(handleWsMessage);
   }
+}
+
+// Seguir pintando una respuesta que el servidor continuó generando mientras la web estaba cerrada
+function resumeLiveTask(live) {
+  const msg = live.message || {};
+  startStreamingAssistant();
+  lastTaskSeq = live.seq || 0;
+  const bubble = currentAssistantElement.querySelector('.msg-bubble');
+  for (const t of msg.tools || []) {
+    if (t.subagent) continue;
+    const card = buildToolCard(t);
+    bubble.insertBefore(card, currentTextElement);
+    if (t.status === 'running' && t.id) currentToolCards.set(t.id, card);
+  }
+  if (msg.thinking) {
+    currentAccumulatedThinking = msg.thinking;
+    currentThinkingElement.style.display = 'block';
+    currentThinkingElement.querySelector('.thinking-content').textContent = msg.thinking;
+  }
+  currentAccumulatedText = msg.text || '';
+  currentSegmentText = currentAccumulatedText;
+  if (currentSegmentText.trim()) {
+    currentTextElement.innerHTML = window.marked ? marked.parse(currentSegmentText) : escapeHtml(currentSegmentText);
+  }
+  setRunning(true);
+  scrollToBottom();
 }
 
 async function deleteSession(id) {
@@ -1506,11 +1569,41 @@ function finishToolCards(status = 'done') {
   currentToolCards.clear();
 }
 
+const TASK_STREAM_EVENTS = new Set(['stream_delta', 'stream_raw', 'stream_thinking', 'tool_use', 'tool_result']);
+
 function handleWsMessage(data) {
+  if (TASK_STREAM_EVENTS.has(data.type)) {
+    if (resyncBuffer) {
+      resyncBuffer.push(data);
+      return;
+    }
+    // Eventos de otra conversación (la tarea sigue en segundo plano) o ya pintados
+    if (data.sessionId && activeSessionId && data.sessionId !== activeSessionId) return;
+    if (data.seq) {
+      if (data.seq <= lastTaskSeq) return;
+      lastTaskSeq = data.seq;
+    }
+  }
+
   switch (data.type) {
     case 'auth_success':
       if (data.user) applyCurrentUser(data.user);
       if (data.workspace) updateWorkspaceUI(data.workspace);
+      // La tarea siguió en el servidor mientras no había conexión: recuperar lo generado
+      if (data.liveTask) {
+        if (!activeSessionId || activeSessionId === data.liveTask.sessionId) {
+          openSession(data.liveTask.sessionId);
+        } else {
+          setRunning(true);
+        }
+      } else if (isRunning) {
+        // Terminó mientras estábamos desconectados: mostrar el resultado guardado
+        setRunning(false);
+        finishToolCards();
+        currentAssistantElement = null;
+        if (activeSessionId) openSession(activeSessionId);
+        else loadSessions();
+      }
       // Al reconectar, recuperar las peticiones de permiso que siguen esperando
       pendingPermissions.clear();
       (data.pendingPermissions || []).forEach(req => pendingPermissions.set(req.id, req));
@@ -1533,6 +1626,7 @@ function handleWsMessage(data) {
       break;
 
     case 'assistant_start':
+      lastTaskSeq = 0;
       if (data.sessionId && !activeSessionId) {
         activeSessionId = data.sessionId;
         if (incognitoMode) incognitoSessionId = data.sessionId;
@@ -3842,3 +3936,179 @@ function escapeHtml(str) {
 
 // Boot check
 window.addEventListener('DOMContentLoaded', checkAuth);
+
+// ==========================================================================
+// App instalable (PWA) y notificaciones push
+// ==========================================================================
+let deferredInstallPrompt = null;
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register('/sw.js').catch(err => console.warn('Service worker no registrado:', err));
+  // Tocar una notificación con la app ya abierta
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data?.type === 'open_session' && event.data.sessionId && authToken) openSession(event.data.sessionId);
+  });
+}
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  if (document.getElementById('app-modal')?.style.display === 'flex') renderAppModal();
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  showToast('App instalada');
+  renderAppModal();
+});
+
+// Quitar las notificaciones ya mostradas al volver a la app
+function clearShownNotifications() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.getRegistration()
+    .then(reg => reg ? reg.getNotifications() : [])
+    .then(list => list.forEach(n => n.close()))
+    .catch(() => {});
+}
+
+async function currentPushSubscription() {
+  if (!pushSupported()) return null;
+  const reg = await navigator.serviceWorker.getRegistration();
+  return reg ? reg.pushManager.getSubscription() : null;
+}
+
+function base64UrlToUint8Array(value) {
+  const base64 = (value + '='.repeat((4 - value.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+  return Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+}
+
+async function enablePush() {
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') throw new Error('Has bloqueado las notificaciones para esta web');
+  const reg = await navigator.serviceWorker.ready;
+  const keyRes = await authFetch('/api/push/key');
+  const { publicKey } = await keyRes.json();
+  let sub = await reg.pushManager.getSubscription();
+  // Si el servidor cambió de claves, la suscripción antigua ya no sirve
+  if (sub && sub.options?.applicationServerKey) {
+    const current = new Uint8Array(sub.options.applicationServerKey);
+    const expected = base64UrlToUint8Array(publicKey);
+    if (current.length !== expected.length || current.some((b, i) => b !== expected[i])) {
+      await sub.unsubscribe();
+      sub = null;
+    }
+  }
+  if (!sub) {
+    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlToUint8Array(publicKey) });
+  }
+  const res = await authFetch('/api/push/subscribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subscription: sub.toJSON() })
+  });
+  if (!res.ok) throw new Error('El servidor no ha aceptado la suscripción');
+}
+
+async function disablePush() {
+  const sub = await currentPushSubscription();
+  if (!sub) return;
+  if (authToken) {
+    await authFetch('/api/push/unsubscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint: sub.endpoint })
+    }).catch(() => {});
+  }
+  await sub.unsubscribe();
+}
+
+async function renderAppModal() {
+  const installHint = document.getElementById('app-install-hint');
+  const installBtn = document.getElementById('btn-app-install');
+  const pushHint = document.getElementById('app-push-hint');
+  const pushBtn = document.getElementById('btn-app-push');
+  if (!installHint || !pushHint) return;
+
+  installBtn.hidden = true;
+  if (!window.isSecureContext) {
+    installHint.innerHTML = 'Para instalarla hace falta abrir ClaudeZer0 por <strong>HTTPS</strong>. Instálala en el servidor con <code>bash deploy/install-linux.sh --tailscale</code> y entra por la dirección <code>https://…ts.net</code>.';
+  } else if (isStandalone()) {
+    installHint.textContent = 'Ya la estás usando como app instalada.';
+  } else if (deferredInstallPrompt) {
+    installHint.textContent = 'Añade ClaudeZer0 a tu pantalla de inicio: se abre a pantalla completa, como una app más.';
+    installBtn.hidden = false;
+  } else if (isIos()) {
+    installHint.innerHTML = 'En Safari, toca <strong>Compartir</strong> y después <strong>Añadir a pantalla de inicio</strong>. En iPhone las notificaciones solo funcionan desde la app instalada.';
+  } else {
+    installHint.innerHTML = 'Abre el menú del navegador y elige <strong>Instalar aplicación</strong> (o <strong>Añadir a pantalla de inicio</strong>).';
+  }
+
+  pushBtn.hidden = true;
+  if (!window.isSecureContext) {
+    pushHint.textContent = 'Las notificaciones también necesitan HTTPS.';
+  } else if (!pushSupported()) {
+    pushHint.textContent = isIos() && !isStandalone()
+      ? 'Instala la app primero (paso anterior) y actívalas desde ella.'
+      : 'Este navegador no admite notificaciones push.';
+  } else if (Notification.permission === 'denied') {
+    pushHint.textContent = 'Las has bloqueado para esta web. Actívalas en los ajustes del navegador o del móvil y vuelve aquí.';
+  } else {
+    const sub = await currentPushSubscription().catch(() => null);
+    const on = !!sub && Notification.permission === 'granted';
+    pushHint.textContent = on
+      ? 'Activadas en este dispositivo: te avisa cuando Claude termina o necesita permiso y no tienes la app a la vista.'
+      : 'Recibe un aviso cuando Claude termine una tarea o necesite tu permiso, aunque tengas la app cerrada.';
+    pushBtn.textContent = on ? 'Desactivar en este dispositivo' : 'Activar notificaciones';
+    pushBtn.dataset.on = on ? '1' : '';
+    pushBtn.hidden = false;
+  }
+}
+
+function openAppModal() {
+  closeAllDropdowns();
+  closeMobileSidebar();
+  document.getElementById('app-modal').style.display = 'flex';
+  renderAppModal();
+}
+
+function closeAppModal() {
+  document.getElementById('app-modal').style.display = 'none';
+}
+
+function setupAppInstall() {
+  document.getElementById('btn-user-app')?.addEventListener('click', openAppModal);
+  document.getElementById('btn-close-app')?.addEventListener('click', closeAppModal);
+  document.getElementById('app-modal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'app-modal') closeAppModal();
+  });
+
+  document.getElementById('btn-app-install')?.addEventListener('click', async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice.catch(() => null);
+    deferredInstallPrompt = null;
+    renderAppModal();
+  });
+
+  document.getElementById('btn-app-push')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      if (btn.dataset.on) {
+        await disablePush();
+        showToast('Notificaciones desactivadas');
+      } else {
+        await enablePush();
+        showToast('Notificaciones activadas');
+      }
+    } catch (err) {
+      showToast(err.message || 'No se pudieron activar las notificaciones');
+    } finally {
+      btn.disabled = false;
+      renderAppModal();
+    }
+  });
+}
