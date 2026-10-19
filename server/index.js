@@ -394,7 +394,7 @@ app.get('/api/models', requireAuth, (req, res) => {
 
 app.post('/api/models', requireAuth, requireAdmin, (req, res) => {
   try {
-    const { id, name, tag, badge, desc, icon } = req.body;
+    const { id, name, tag, badge, desc, icon } = req.body || {};
     const model = addOrUpdateModel({ id, name, tag, badge, desc, icon });
     res.json({ success: true, model, models: withPricing(getAvailableModels()) });
   } catch (err) {
@@ -440,7 +440,7 @@ async function runModelsSync(clientKey = null, reason = 'manual') {
 }
 
 app.post('/api/models/sync', requireAuth, async (req, res) => {
-  const clientKey = req.headers['x-claude-api-key'] || req.body.apiKey || null;
+  const clientKey = req.headers['x-claude-api-key'] || req.body?.apiKey || null;
   const result = await runModelsSync(clientKey, 'manual');
   res.json(result);
 });
@@ -477,7 +477,7 @@ app.post('/api/usage/reset', requireAuth, requireAdmin, (req, res) => {
 });
 
 app.post('/api/auth/validate-key', requireAuth, (req, res) => {
-  const { apiKey } = req.body;
+  const { apiKey } = req.body || {};
   const result = validateApiKey(apiKey);
   res.json(result);
 });
@@ -487,7 +487,7 @@ app.get('/api/sessions', requireAuth, (req, res) => {
 });
 
 app.post('/api/sessions', requireAuth, (req, res) => {
-  const { title } = req.body;
+  const { title } = req.body || {};
   const session = createSession(title, getCurrentWorkspace(req.user), { owner: req.user.username });
   res.json({ success: true, session });
 });
@@ -546,7 +546,7 @@ app.get('/api/workspace', requireAuth, (req, res) => {
 });
 
 app.post('/api/workspace', requireAuth, (req, res) => {
-  const { path: newPath } = req.body;
+  const { path: newPath } = req.body || {};
   try {
     const updated = setWorkspace(req.user, newPath);
     sendToUser(req.user.username, { type: 'workspace_changed', workspace: updated });
@@ -557,7 +557,7 @@ app.post('/api/workspace', requireAuth, (req, res) => {
 });
 
 app.post('/api/workspace/create', requireAuth, (req, res) => {
-  const { parentPath, name } = req.body;
+  const { parentPath, name } = req.body || {};
   try {
     const created = createDirectory(req.user, parentPath || getCurrentWorkspace(req.user), name);
     res.json({ success: true, created });

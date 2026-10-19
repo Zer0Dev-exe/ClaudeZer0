@@ -8,8 +8,8 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Plataforma-Windows%20%7C%20Linux%20%7C%20macOS-informational?style=flat-square&logo=linux" alt="Multiplataforma">
-  <img src="https://img.shields.io/badge/Node.js-%3E%3D18.0.0-success?style=flat-square&logo=node.js" alt="Node.js">
-  <img src="https://img.shields.io/badge/Claude%20Code-2.1.280-D97757?style=flat-square" alt="Claude Code">
+  <img src="https://img.shields.io/badge/Node.js-%3E%3D18-success?style=flat-square&logo=node.js" alt="Node.js">
+  <img src="https://img.shields.io/badge/Claude%20Code-2.1.303-D97757?style=flat-square" alt="Claude Code">
   <img src="https://img.shields.io/badge/Modos-Hoster%20%7C%20Client-orange?style=flat-square" alt="Modos">
   <img src="https://img.shields.io/badge/Licencia-MIT-blue?style=flat-square" alt="Licencia">
 </p>
@@ -54,7 +54,7 @@
 ## 🚀 Instalación Rápida
 
 ### Requisitos Previos
-- **Node.js** (versión 18 o superior).
+- **Node.js** (versión 18 o superior; recomendada la LTS actual).
 - Gestor de paquetes **pnpm** (recomendado) o **npm**.
 
 ### 1. Clonar el Repositorio
