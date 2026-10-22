@@ -1,9 +1,9 @@
 // ==========================================================================
-// ClaudeZer0 - Cliente Oficial Estilo Claude.ai con Auth .env e Historial
+// Zer0Code - Cliente web propio con Auth .env e Historial
 // ==========================================================================
 
-let authToken = localStorage.getItem('claudezer0_token') || null;
-let currentUsername = localStorage.getItem('claudezer0_user') || 'admin';
+let authToken = localStorage.getItem('zer0code_token') || null;
+let currentUsername = localStorage.getItem('zer0code_user') || 'admin';
 // Rol, modos y carpetas permitidas del usuario (los envía el servidor)
 let currentUser = null;
 let ws = null;
@@ -45,8 +45,8 @@ function writePref(key, value) {
   }
 }
 
-let selectedEffort = readPref('claudezer0_effort', 'auto');
-let selectedOutputStyle = readPref('claudezer0_output_style', 'default');
+let selectedEffort = readPref('zer0code_effort', 'auto');
+let selectedOutputStyle = readPref('zer0code_output_style', 'default');
 let incognitoMode = false;
 let incognitoSessionId = null;
 let sessionFilter = '';
@@ -132,6 +132,9 @@ let availableModelsList = [
 ];
 const DEFAULT_MODEL_ID = 'claude-opus-5-5';
 let availableModelsMap = {};
+// Cuentas de ChatGPT (Codex) y Gemini conectadas en el servidor
+let providersStatus = {};
+const PROVIDER_LABELS = { codex: 'ChatGPT', gemini: 'Gemini' };
 
 function rebuildModelsMap() {
   availableModelsMap = {};
@@ -186,7 +189,7 @@ function sanitizeStoredModel(id) {
   return id;
 }
 
-let selectedModel = sanitizeStoredModel(localStorage.getItem('claudezer0_model'));
+let selectedModel = sanitizeStoredModel(localStorage.getItem('zer0code_model'));
 
 // DOM Elements: Workspace Modal
 const workspaceModal = document.getElementById('workspace-modal');
@@ -204,7 +207,7 @@ const btnCreateFolder = document.getElementById('btn-create-folder');
 
 // DOM Elements: Modo Hoster/Client & Key Modal
 let appMode = 'Hoster';
-let clientApiKey = localStorage.getItem('claudezer0_client_key') || '';
+let clientApiKey = localStorage.getItem('zer0code_client_key') || '';
 let serverAuthInfo = null;
 
 const btnModeIndicator = document.getElementById('btn-mode-indicator');
@@ -262,11 +265,11 @@ let pendingLoginPassword = null;
 
 function setCurrentUsername(name) {
   currentUsername = name;
-  localStorage.setItem('claudezer0_user', name);
+  localStorage.setItem('zer0code_user', name);
 }
 
 function clearAuthToken() {
-  localStorage.removeItem('claudezer0_token');
+  localStorage.removeItem('zer0code_token');
   authToken = null;
 }
 
@@ -360,7 +363,7 @@ loginForm.addEventListener('submit', async (e) => {
     if (data.success) {
       authToken = data.token;
       setCurrentUsername(data.username);
-      localStorage.setItem('claudezer0_token', authToken);
+      localStorage.setItem('zer0code_token', authToken);
       loginPassword.value = '';
       if (data.mustChangePassword) {
         pendingLoginPassword = password;
@@ -498,6 +501,7 @@ async function loadInitialStatus() {
     if (data.auth) {
       serverAuthInfo = data.auth;
     }
+    if (data.providers) providersStatus = data.providers;
     if (data.appMode) {
       appMode = data.appMode;
       updateModeUI();
@@ -749,7 +753,7 @@ function newChat() {
 }
 
 // ==========================================================================
-// 4. Renderizado de Mensajes (Estilo Claude.ai)
+// 4. Renderizado de Mensajes
 // ==========================================================================
 function renderMessages(messages) {
   messagesContainer.innerHTML = '';
@@ -969,8 +973,8 @@ function startStreamingAssistant() {
 
   row.innerHTML = `
     <div class="assistant-head">
-      <div class="claude-avatar-mini"><svg><use href="#i-spark"/></svg></div>
-      <span class="assistant-name">Claude</span>
+      <div class="claude-avatar-mini brand-logo"><svg><use href="#i-logo"/></svg></div>
+      <span class="assistant-name">Zer0</span>
     </div>
     <div class="msg-bubble">
       <details class="claude-thinking" style="display: none;">
@@ -998,7 +1002,7 @@ function appendAssistantMsgStatic(msg) {
   if (msg.thinking) {
     thinkingHtml = `
       <details class="claude-thinking">
-        <summary>Pensamiento de Claude</summary>
+        <summary>Razonamiento</summary>
         <div class="thinking-content" style="margin-top:6px;">${escapeHtml(msg.thinking)}</div>
       </details>
     `;
@@ -1008,8 +1012,8 @@ function appendAssistantMsgStatic(msg) {
 
   row.innerHTML = `
     <div class="assistant-head">
-      <div class="claude-avatar-mini"><svg><use href="#i-spark"/></svg></div>
-      <span class="assistant-name">Claude</span>
+      <div class="claude-avatar-mini brand-logo"><svg><use href="#i-logo"/></svg></div>
+      <span class="assistant-name">Zer0</span>
     </div>
     <div class="msg-bubble">
       ${thinkingHtml}
@@ -1044,8 +1048,8 @@ function renderAssistantCard(htmlContent) {
   row.className = 'msg-row assistant';
   row.innerHTML = `
     <div class="assistant-head">
-      <div class="claude-avatar-mini"><svg><use href="#i-spark"/></svg></div>
-      <span class="assistant-name">Claude</span>
+      <div class="claude-avatar-mini brand-logo"><svg><use href="#i-logo"/></svg></div>
+      <span class="assistant-name">Zer0</span>
     </div>
     <div class="msg-bubble">
       <div class="text-body">${htmlContent}</div>
@@ -1274,13 +1278,13 @@ function handleSlashMode(arg) {
 
   // Interactive card
   const cardId = 'mode-card-' + Date.now();
-  const currentMode = permissionMode ? permissionMode.value : (localStorage.getItem('claudezer0_mode') || 'auto');
+  const currentMode = permissionMode ? permissionMode.value : (localStorage.getItem('zer0code_mode') || 'auto');
   let buttonsHtml = '';
   const modeDescriptions = {
-    'acceptEdits': 'Recomendado: Claude edita y crea archivos automáticamente.',
-    'auto': 'Autónomo total: Claude ejecuta herramientas y comandos sin confirmación.',
-    'plan': 'Solo planificación: Claude analiza y diseña soluciones sin modificar código.',
-    'manual': 'Control manual: Claude solicita confirmación antes de cada herramienta.'
+    'acceptEdits': 'Recomendado: Zer0 edita y crea archivos automáticamente.',
+    'auto': 'Autónomo total: Zer0 ejecuta herramientas y comandos sin confirmación.',
+    'plan': 'Solo planificación: Zer0 analiza y diseña soluciones sin modificar código.',
+    'manual': 'Control manual: Zer0 solicita confirmación antes de cada herramienta.'
   };
 
   modeKeys.forEach(k => {
@@ -1330,7 +1334,7 @@ function handleSlashMode(arg) {
 
 function handleSlashStatus() {
   const currentInfo = getModelInfo(selectedModel);
-  const curMode = permissionMode ? permissionMode.value : (localStorage.getItem('claudezer0_mode') || 'auto');
+  const curMode = permissionMode ? permissionMode.value : (localStorage.getItem('zer0code_mode') || 'auto');
   const modeInfo = EXECUTION_MODES[curMode] || { label: curMode };
 
   const keyStatusText = clientApiKey
@@ -1341,7 +1345,7 @@ function handleSlashStatus() {
     <div class="interactive-card">
       <div class="interactive-card-title">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-        <span>Estado del Sistema ClaudeZer0</span>
+        <span>Estado del Sistema Zer0Code</span>
       </div>
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:10px; margin-top:10px; font-size:0.82rem;">
         <div style="background:var(--bg-input); padding:10px; border-radius:8px; border:1px solid var(--border-subtle);">
@@ -1555,7 +1559,7 @@ async function sendPrompt(customPrompt, { skipPlanCheck = false } = {}) {
       apiKey: clientApiKey || null,
       effort: effectiveEffort(),
       outputStyle: selectedOutputStyle !== 'default' ? selectedOutputStyle : null,
-      customInstructions: readPref('claudezer0_custom_instructions', '') || null,
+      customInstructions: readPref('zer0code_custom_instructions', '') || null,
       incognito: incognitoMode
     }));
   }
@@ -1770,7 +1774,7 @@ function setRunning(running) {
   mainApp.classList.toggle('is-running', running);
   if (running) {
     if (statusIndicator) statusIndicator.className = 'status-indicator busy';
-    if (statusText) statusText.textContent = 'Claude trabajando';
+    if (statusText) statusText.textContent = 'Zer0 trabajando';
     if (btnModelTrigger) btnModelTrigger.classList.add('working');
     btnSend.style.display = 'none';
     btnStop.style.display = 'flex';
@@ -1810,8 +1814,11 @@ function setupVoice() {
 
   recognition = new SpeechRecognition();
   recognition.lang = 'es-ES';
-  recognition.continuous = false;
+  recognition.continuous = true;
   recognition.interimResults = true;
+
+  // Lo dictado se añade a lo que ya hubiera escrito, sin borrarlo
+  let baseText = '';
 
   recognition.onstart = () => {
     isListening = true;
@@ -1820,21 +1827,46 @@ function setupVoice() {
 
   recognition.onresult = (e) => {
     let transcript = '';
-    for (let i = e.resultIndex; i < e.results.length; ++i) {
+    for (let i = 0; i < e.results.length; ++i) {
       transcript += e.results[i][0].transcript;
     }
-    promptInput.value = transcript;
+    promptInput.value = (baseText ? baseText + ' ' : '') + transcript.trim();
     adjustTextareaHeight();
   };
 
-  recognition.onerror = () => stopVoice();
+  recognition.onerror = (e) => {
+    const reasons = {
+      'not-allowed': 'Permiso de micrófono denegado: actívalo en el candado de la barra de direcciones',
+      'service-not-allowed': 'Este navegador no permite el dictado (prueba con Chrome o Edge)',
+      'audio-capture': 'No se ha encontrado ningún micrófono',
+      network: 'El dictado no funciona en este navegador (Brave y Opera lo bloquean): prueba con Chrome o Edge',
+      'language-not-supported': 'El dictado en español no está disponible en este navegador',
+    };
+    if (reasons[e.error]) showToast(reasons[e.error]);
+    stopVoice();
+  };
   recognition.onend = () => stopVoice();
 
-  btnVoice.addEventListener('click', () => {
+  btnVoice.addEventListener('click', async () => {
     if (isListening) {
       recognition.stop();
-    } else {
-      try { recognition.start(); } catch (err) {}
+      return;
+    }
+    // Pedir el micrófono antes: así el navegador muestra el aviso de permiso y los fallos se ven
+    if (navigator.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(t => t.stop());
+      } catch (err) {
+        showToast(err.name === 'NotFoundError' ? 'No se ha encontrado ningún micrófono' : 'Permiso de micrófono denegado: actívalo en el candado de la barra de direcciones');
+        return;
+      }
+    }
+    baseText = promptInput.value.trim();
+    try {
+      recognition.start();
+    } catch (err) {
+      showToast('No se pudo iniciar el dictado');
     }
   });
 }
@@ -2052,9 +2084,9 @@ function handleSaveKey() {
 
   clientApiKey = inputKey;
   if (clientApiKey) {
-    localStorage.setItem('claudezer0_client_key', clientApiKey);
+    localStorage.setItem('zer0code_client_key', clientApiKey);
   } else {
-    localStorage.removeItem('claudezer0_client_key');
+    localStorage.removeItem('zer0code_client_key');
   }
 
   updateModeUI();
@@ -2063,7 +2095,7 @@ function handleSaveKey() {
 
 function handleDeleteKey() {
   clientApiKey = '';
-  localStorage.removeItem('claudezer0_client_key');
+  localStorage.removeItem('zer0code_client_key');
   if (clientApiKeyInput) clientApiKeyInput.value = '';
   if (btnDeleteKey) btnDeleteKey.style.display = 'none';
   if (keyValidationStatus) {
@@ -2189,10 +2221,37 @@ function renderModelDropdown() {
   if (!dynamicModelList) return;
   dynamicModelList.innerHTML = '';
 
-  const mainModels = availableModelsList.filter(m => !m.legacy);
-  const legacyModels = availableModelsList.filter(m => m.legacy);
+  const claudeModels = availableModelsList.filter(m => !m.provider);
+  const mainModels = claudeModels.filter(m => !m.legacy);
+  const legacyModels = claudeModels.filter(m => m.legacy);
 
-  mainModels.forEach(m => dynamicModelList.appendChild(buildModelOption(m)));
+  // Claude, ChatGPT y Gemini, cada uno en su submenú
+  const groups = [['claude', 'Claude', mainModels]].concat(
+    Object.entries(PROVIDER_LABELS).map(([provider, label]) => [provider, label, availableModelsList.filter(m => m.provider === provider)])
+  );
+  groups.forEach(([provider, label, models]) => {
+    if (!models.length) return;
+    const connected = providersStatus[provider]?.loggedIn;
+    const active = models.some(m => m.id === selectedModel);
+    const group = document.createElement('div');
+    group.className = `submenu provider-models${active ? ' has-selected' : ''}`;
+    group.dataset.provider = provider;
+    group.innerHTML = `
+      <button type="button" class="dropdown-item submenu-trigger" aria-haspopup="listbox" aria-expanded="false">
+        <span class="submenu-label">${escapeHtml(label)}${connected === false ? ' <span class="provider-off">sin conectar</span>' : ''}</span>
+        <svg class="submenu-chevron"><use href="#i-chevron-right"/></svg>
+      </button>
+      <div class="submenu-flyout" role="listbox"></div>
+    `;
+    const flyout = group.querySelector('.submenu-flyout');
+    if (provider === 'gemini') {
+      const switcher = buildGeminiBackendSwitch();
+      if (switcher) flyout.appendChild(switcher);
+    }
+    models.forEach(m => flyout.appendChild(buildModelOption(m)));
+    bindSubmenu(group);
+    dynamicModelList.appendChild(group);
+  });
 
   // Submenú "Más modelos" con las generaciones anteriores
   const moreSlot = document.getElementById('more-models-slot');
@@ -2220,6 +2279,54 @@ function renderModelDropdown() {
   if (shellReady) renderEffortOptions();
 }
 
+// Elegir con qué CLI se usa Gemini (solo si el servidor tiene los dos)
+const GEMINI_BACKEND_LABELS = { antigravity: 'Antigravity', gemini: 'Gemini CLI' };
+
+function buildGeminiBackendSwitch() {
+  const status = providersStatus.gemini;
+  if (!status || !Array.isArray(status.backends) || status.backends.length < 2) return null;
+  const wrap = document.createElement('div');
+  wrap.className = 'gemini-backend-switch';
+  wrap.setAttribute('role', 'group');
+  wrap.setAttribute('aria-label', 'Usar Gemini con');
+  status.backends.forEach(backend => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `gemini-backend-option${status.backend === backend ? ' active' : ''}`;
+    btn.textContent = GEMINI_BACKEND_LABELS[backend] || backend;
+    btn.setAttribute('aria-pressed', status.backend === backend ? 'true' : 'false');
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (status.backend !== backend) setGeminiBackend(backend);
+    });
+    wrap.appendChild(btn);
+  });
+  return wrap;
+}
+
+async function setGeminiBackend(backend) {
+  try {
+    const res = await authFetch('/api/providers/gemini-backend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backend })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'No se pudo cambiar');
+    providersStatus = data.providers;
+    applyModelsList(data.models, data.defaultModel);
+    showToast(`Gemini ahora usa ${GEMINI_BACKEND_LABELS[backend] || backend}`);
+    // Mantener abierto el submenú de Gemini tras redibujar
+    const gemini = dynamicModelList.querySelector('.provider-models[data-provider="gemini"]');
+    if (gemini) {
+      gemini.classList.add('open');
+      placeSubmenuFlyout(gemini);
+    }
+  } catch (err) {
+    showToast(`Gemini: ${err.message}`);
+  }
+}
+
 function buildModelOption(m, { compact = false } = {}) {
   const isSelected = selectedModel === m.id;
   const isUserModel = m.custom && m.source !== 'anthropic';
@@ -2235,7 +2342,7 @@ function buildModelOption(m, { compact = false } = {}) {
 
   const multiplier = costMultiplier(m);
   const subscription = isSubscriptionBilling();
-  const priceLine = subscription
+  const priceLine = subscription || m.provider
     ? ''
     : (m.pricing ? `${formatPrice(m.pricing.input)} entrada · ${formatPrice(m.pricing.output)} salida / MTok` : 'Precio no disponible');
   const chipTitle = subscription
@@ -2373,7 +2480,7 @@ function refreshModelSelectionMarks() {
 
 function setModel(modelId) {
   selectedModel = modelId;
-  writePref('claudezer0_model', modelId);
+  writePref('zer0code_model', modelId);
   updateModelTrigger();
   refreshModelSelectionMarks();
   renderEffortOptions();
@@ -2449,7 +2556,7 @@ async function deleteCustomModel(id) {
     if (data.success) {
       if (selectedModel === id) {
         selectedModel = DEFAULT_MODEL_ID;
-        localStorage.setItem('claudezer0_model', selectedModel);
+        localStorage.setItem('zer0code_model', selectedModel);
       }
       await loadModels();
       showToast('Modelo eliminado');
@@ -2603,15 +2710,15 @@ function setupEventListeners() {
 }
 
 function initModelAndMode() {
-  const rawModel = sanitizeStoredModel(localStorage.getItem('claudezer0_model'));
+  const rawModel = sanitizeStoredModel(localStorage.getItem('zer0code_model'));
   const modelInfo = getModelInfo(rawModel);
   setModel(modelInfo.id, modelInfo.name, modelInfo.tag);
   renderModelDropdown();
 
-  let savedMode = localStorage.getItem('claudezer0_mode') || 'auto';
+  let savedMode = localStorage.getItem('zer0code_mode') || 'auto';
   if (savedMode === 'acceptEdits') {
     savedMode = 'auto';
-    localStorage.setItem('claudezer0_mode', savedMode);
+    localStorage.setItem('zer0code_mode', savedMode);
   }
   const modeInfo = EXECUTION_MODES[savedMode] || EXECUTION_MODES['auto'];
   setPermissionMode(savedMode, modeInfo.icon, modeInfo.label);
@@ -2633,7 +2740,7 @@ function applyAllowedModes() {
 }
 
 function setPermissionMode(modeValue, modeIcon, modeLabel) {
-  localStorage.setItem('claudezer0_mode', modeValue);
+  localStorage.setItem('zer0code_mode', modeValue);
   if (permissionMode) permissionMode.value = modeValue;
   const info = EXECUTION_MODES[modeValue] || { icon: modeIcon || '', label: modeLabel || modeValue };
   if (currentModeIcon) currentModeIcon.innerHTML = info.icon;
@@ -2742,7 +2849,7 @@ function syncEmptyState() {
   const empty = emptyState.style.display !== 'none';
   mainApp.classList.toggle('main-app-empty', empty);
   mainApp.classList.toggle('is-chat', !empty);
-  promptInput.placeholder = empty ? '¿En qué puedo ayudarte hoy?' : 'Responde a Claude…';
+  promptInput.placeholder = empty ? '¿En qué puedo ayudarte hoy?' : 'Responde a Zer0…';
   updateTopTitle();
 }
 
@@ -2760,16 +2867,25 @@ function updateTopTitle() {
 function updateGreeting() {
   const greeting = document.getElementById('greeting-text');
   if (!greeting) return;
-  const name = readPref('claudezer0_display_name', '').trim();
+  const name = readPref('zer0code_display_name', '').trim();
   if (incognitoMode) {
     greeting.textContent = 'Chat incógnito';
   } else {
-    greeting.textContent = name ? `¿En qué estamos pensando, ${name}?` : '¿En qué estamos pensando?';
+    greeting.textContent = currentUser?.profile?.greeting || defaultGreeting(name || currentUsername);
   }
 }
 
+/** Saludo según el día y la hora, con el nombre si lo hay. */
+function defaultGreeting(name) {
+  const now = new Date();
+  const hour = now.getHours();
+  const day = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][now.getDay()];
+  const base = hour >= 5 && hour < 12 ? `Feliz ${day}` : hour >= 12 && hour < 20 ? 'Buenas tardes' : 'Buenas noches';
+  return name ? `${base}, ${name}` : base;
+}
+
 function updateUserIdentity() {
-  const name = readPref('claudezer0_display_name', '').trim() || currentUsername || 'Usuario';
+  const name = readPref('zer0code_display_name', '').trim() || currentUsername || 'Usuario';
   if (userDisplayName) userDisplayName.textContent = name;
   if (userAvatarLetter) {
     const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w.charAt(0)).join('');
@@ -2817,23 +2933,25 @@ function resolveTheme(choice) {
 }
 
 function applyTheme(choice, { persist = true } = {}) {
-  if (persist) writePref('claudezer0_theme', choice);
+  if (persist) writePref('zer0code_theme', choice);
   const resolved = resolveTheme(choice);
   document.documentElement.dataset.theme = resolved;
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', resolved === 'dark' ? '#262624' : '#faf9f5');
+  if (meta) meta.setAttribute('content', resolved === 'dark' ? '#0b0b0d' : '#fafafa');
   document.querySelectorAll('[data-theme-choice]').forEach(b => b.classList.toggle('active', b.dataset.themeChoice === choice));
   document.querySelectorAll('#pz-theme button').forEach(b => b.classList.toggle('active', b.dataset.value === choice));
 }
 
 function applyAccent(value, { persist = true } = {}) {
-  if (persist) writePref('claudezer0_accent', value);
+  // Acentos antiguos que ya no existen: vuelven al de Zer0
+  if (!value || value === 'terracotta' || value === 'ocean') value = 'zero';
+  if (persist) writePref('zer0code_accent', value);
   document.documentElement.dataset.accent = value;
   document.querySelectorAll('#pz-accent button').forEach(b => b.classList.toggle('active', b.dataset.value === value));
 }
 
 function applyChatFont(value, { persist = true } = {}) {
-  if (persist) writePref('claudezer0_chat_font', value);
+  if (persist) writePref('zer0code_chat_font', value);
   document.documentElement.dataset.chatFont = value;
   document.querySelectorAll('#pz-font button').forEach(b => b.classList.toggle('active', b.dataset.value === value));
 }
@@ -2845,12 +2963,12 @@ function openPersonalizeModal() {
   closeAllDropdowns();
   closeMobileSidebar();
   personalizeSnapshot = {
-    theme: readPref('claudezer0_theme', 'light'),
-    accent: readPref('claudezer0_accent', 'terracotta'),
-    font: readPref('claudezer0_chat_font', 'serif')
+    theme: readPref('zer0code_theme', 'light'),
+    accent: readPref('zer0code_accent', 'zero'),
+    font: readPref('zer0code_chat_font', 'sans')
   };
-  document.getElementById('pz-name').value = readPref('claudezer0_display_name', '');
-  document.getElementById('pz-instructions').value = readPref('claudezer0_custom_instructions', '');
+  document.getElementById('pz-name').value = readPref('zer0code_display_name', '');
+  document.getElementById('pz-instructions').value = readPref('zer0code_custom_instructions', '');
   applyTheme(personalizeSnapshot.theme, { persist: false });
   applyAccent(personalizeSnapshot.accent, { persist: false });
   applyChatFont(personalizeSnapshot.font, { persist: false });
@@ -2875,11 +2993,11 @@ function savePersonalization() {
     const active = document.querySelector(`#${groupId} button.active`);
     return active ? active.dataset.value : fallback;
   };
-  writePref('claudezer0_display_name', document.getElementById('pz-name').value.trim());
-  writePref('claudezer0_custom_instructions', document.getElementById('pz-instructions').value.trim());
+  writePref('zer0code_display_name', document.getElementById('pz-name').value.trim());
+  writePref('zer0code_custom_instructions', document.getElementById('pz-instructions').value.trim());
   applyTheme(pick('pz-theme', 'light'));
-  applyAccent(pick('pz-accent', 'terracotta'));
-  applyChatFont(pick('pz-font', 'serif'));
+  applyAccent(pick('pz-accent', 'zero'));
+  applyChatFont(pick('pz-font', 'sans'));
   closePersonalizeModal({ revert: false });
   updateGreeting();
   updateUserIdentity();
@@ -2893,6 +3011,9 @@ function bindSubmenu(submenu) {
     submenu.classList.toggle('open', open);
     trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
     if (open) placeSubmenuFlyout(submenu);
+    // Integrado, el submenú hace crecer el menú: recolocarlo para que siga cabiendo en pantalla
+    const dropdown = submenu.closest('.custom-dropdown');
+    if (dropdown && submenu.closest('.submenus-inline')) placeDropdownMenu(dropdown);
   };
   trigger.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -2904,13 +3025,15 @@ function bindSubmenu(submenu) {
   // antes de cerrar, para que dé tiempo a llevar el ratón hasta el submenú.
   const canHover = window.matchMedia('(hover: hover) and (min-width: 769px)');
   let closeTimer = null;
+  // Con los submenús integrados (menú con scroll o sin sitio al lado) se abren con clic
+  const hoverable = () => canHover.matches && !submenu.closest('.submenus-inline');
   submenu.addEventListener('mouseenter', () => {
-    if (!canHover.matches) return;
+    if (!hoverable()) return;
     clearTimeout(closeTimer);
     setOpen(true);
   });
   submenu.addEventListener('mouseleave', () => {
-    if (!canHover.matches) return;
+    if (!hoverable()) return;
     clearTimeout(closeTimer);
     closeTimer = setTimeout(() => setOpen(false), 300);
   });
@@ -2937,24 +3060,67 @@ function bindDropdown(dropdownId, triggerId, onOpen) {
 function placeDropdownMenu(dropdown) {
   const menu = dropdown.querySelector(':scope > .dropdown-menu');
   if (!menu) return;
-  menu.classList.remove('flip-up', 'flip-down');
+  menu.classList.remove('flip-up', 'flip-down', 'menu-scroll', 'submenus-inline');
+  menu.style.maxHeight = '';
+  menu.style.left = '';
+  menu.style.right = '';
+  // Que no se salga por los lados (en móvil el botón no está pegado al borde)
+  let rect = menu.getBoundingClientRect();
+  const css = getComputedStyle(menu);
+  if (rect.left < 8 && css.right !== 'auto') {
+    menu.style.right = `${parseFloat(css.right) - (8 - rect.left)}px`;
+  } else if (rect.right > window.innerWidth - 8 && css.left !== 'auto') {
+    menu.style.left = `${parseFloat(css.left) - (rect.right - window.innerWidth + 8)}px`;
+  }
+  // Los submenús se abren a la izquierda; si ahí no caben (los taparía la barra lateral), van integrados.
+  // Se decide antes de medir el alto porque integrados hacen crecer el menú.
+  const bounds = (dropdown.closest('.main-content') || document.body).getBoundingClientRect();
+  if (menu.querySelector('.submenu') && menu.getBoundingClientRect().left - bounds.left < 280) {
+    menu.classList.add('submenus-inline');
+  }
   const anchor = dropdown.getBoundingClientRect();
-  const needed = menu.offsetHeight + 12;
+  const needed = menu.scrollHeight + 12;
   const spaceBelow = window.innerHeight - anchor.bottom;
   const spaceAbove = anchor.top;
-  const opensDown = menu.getBoundingClientRect().top >= anchor.top;
-  if (opensDown && spaceBelow < needed && spaceAbove > spaceBelow) menu.classList.add('flip-up');
-  if (!opensDown && spaceAbove < needed && spaceBelow > spaceAbove) menu.classList.add('flip-down');
+  rect = menu.getBoundingClientRect();
+  let opensDown = rect.top >= anchor.top;
+  if (opensDown && spaceBelow < needed && spaceAbove > spaceBelow) {
+    menu.classList.add('flip-up');
+    opensDown = false;
+  } else if (!opensDown && spaceAbove < needed && spaceBelow > spaceAbove) {
+    menu.classList.add('flip-down');
+    opensDown = true;
+  }
+  // Si tampoco cabe en el lado elegido, se recorta a la pantalla y pasa a tener scroll
+  const available = (opensDown ? spaceBelow : spaceAbove) - 16;
+  if (needed > available) {
+    menu.style.maxHeight = `${Math.max(available, 160)}px`;
+    menu.classList.add('menu-scroll', 'submenus-inline');
+  }
 }
 
 // Submenú lateral: alinearlo por arriba o por abajo para que no se salga de la pantalla
 function placeSubmenuFlyout(submenu) {
   const flyout = submenu.querySelector(':scope > .submenu-flyout');
-  if (!flyout || mobileQuery.matches) return;
+  if (!flyout || mobileQuery.matches || submenu.closest('.submenus-inline')) return;
   flyout.classList.remove('flyout-up');
-  const rect = flyout.getBoundingClientRect();
+  flyout.style.top = '';
+  flyout.style.bottom = '';
+  flyout.style.maxHeight = `${Math.min(440, window.innerHeight - 16)}px`;
+  let rect = flyout.getBoundingClientRect();
   if (rect.bottom > window.innerHeight - 8) flyout.classList.add('flyout-up');
+  // Si al abrirlo hacia arriba se sale por arriba, se baja lo justo para que se vea entero
+  rect = flyout.getBoundingClientRect();
+  if (rect.top < 8) {
+    const css = getComputedStyle(flyout);
+    flyout.style.bottom = `${parseFloat(css.bottom) - (8 - rect.top)}px`;
+  }
 }
+
+// Recolocar el menú abierto si cambia el tamaño de la ventana (girar el móvil, teclado…)
+window.addEventListener('resize', () => {
+  document.querySelectorAll('.custom-dropdown.open').forEach(placeDropdownMenu);
+});
 
 function renderEffortOptions() {
   const list = document.getElementById('effort-options');
@@ -2977,7 +3143,7 @@ function renderEffortOptions() {
     item.addEventListener('click', (e) => {
       e.stopPropagation();
       selectedEffort = opt.value;
-      writePref('claudezer0_effort', opt.value);
+      writePref('zer0code_effort', opt.value);
       renderEffortOptions();
       updateModelTrigger();
       closeAllDropdowns();
@@ -2990,7 +3156,7 @@ function renderEffortOptions() {
 
 function setOutputStyle(value) {
   selectedOutputStyle = OUTPUT_STYLE_LABELS[value] ? value : 'default';
-  writePref('claudezer0_output_style', selectedOutputStyle);
+  writePref('zer0code_output_style', selectedOutputStyle);
   const label = document.getElementById('current-output-label');
   if (label) label.textContent = OUTPUT_STYLE_LABELS[selectedOutputStyle];
   document.querySelectorAll('.output-option').forEach(opt => {
@@ -3258,7 +3424,7 @@ function renderPlanChip() {
 function notifyPlanThresholds() {
   const data = planLimitsData;
   if (clientApiKey || !data || !data.success) return;
-  const seen = readJsonPref('claudezer0_plan_alerts');
+  const seen = readJsonPref('zer0code_plan_alerts');
   let changed = false;
   for (const key of ['session', 'weekly']) {
     const win = data[key];
@@ -3275,7 +3441,7 @@ function notifyPlanThresholds() {
       changed = true;
     }
   }
-  if (changed) writePref('claudezer0_plan_alerts', JSON.stringify(seen));
+  if (changed) writePref('zer0code_plan_alerts', JSON.stringify(seen));
 }
 
 function readJsonPref(key) {
@@ -3299,7 +3465,7 @@ function planWarningFor(modelId) {
   if (!/opus|fable/i.test(modelId || '')) return null;
   const sonnet = sonnetAlternative();
   if (!sonnet) return null;
-  if (readPref('claudezer0_plan_alert_dismissed', '') === `${win.key}:${win.resetsAt}`) return null;
+  if (readPref('zer0code_plan_alert_dismissed', '') === `${win.key}:${win.resetsAt}`) return null;
   return { win, sonnet };
 }
 
@@ -3343,7 +3509,7 @@ function handlePlanAlertClick(e) {
   const prompt = pendingPlanPrompt;
   if (action === 'send') {
     // No volver a preguntar hasta el siguiente restablecimiento
-    writePref('claudezer0_plan_alert_dismissed', alertBox.dataset.window);
+    writePref('zer0code_plan_alert_dismissed', alertBox.dataset.window);
   } else {
     setModel(alertBox.dataset.sonnet);
     showToast(`Modelo: ${shortModelName(getModelInfo(alertBox.dataset.sonnet).name || alertBox.dataset.sonnet)}`);
@@ -3479,7 +3645,7 @@ async function handleResetUsage() {
 // --- Barra lateral -----------------------------------------------------------
 function setSidebarCollapsed(collapsed) {
   document.documentElement.classList.toggle('sidebar-collapsed', collapsed);
-  writePref('claudezer0_sidebar_collapsed', collapsed ? '1' : '0');
+  writePref('zer0code_sidebar_collapsed', collapsed ? '1' : '0');
 }
 
 function focusSidebarSearch() {
@@ -3504,9 +3670,9 @@ function setupShell() {
   updateUserIdentity();
   renderEffortOptions();
   setOutputStyle(selectedOutputStyle);
-  applyTheme(readPref('claudezer0_theme', 'light'), { persist: false });
+  applyTheme(readPref('zer0code_theme', 'light'), { persist: false });
   darkSchemeQuery.addEventListener('change', () => {
-    if (readPref('claudezer0_theme', 'light') === 'system') applyTheme('system', { persist: false });
+    if (readPref('zer0code_theme', 'light') === 'system') applyTheme('system', { persist: false });
   });
   adjustTextareaHeight();
 
@@ -3642,6 +3808,7 @@ function isAdminUser() {
 
 function applyCurrentUser(user) {
   currentUser = user;
+  updateGreeting();
   if (user.username && user.username !== currentUsername) {
     setCurrentUsername(user.username);
     if (shellReady) updateUserIdentity();
@@ -3694,7 +3861,7 @@ function buildPermissionCard(req) {
     <div class="permission-head">
       <svg class="permission-icon"><use href="#i-shield"/></svg>
       <div class="permission-title">
-        <strong>Claude pide permiso</strong>
+        <strong>Zer0 pide permiso</strong>
         <span>${escapeHtml(verb)}${target ? ` <code>${escapeHtml(target)}</code>` : ''}</span>
         ${otherChat ? '<span class="permission-note">En otra conversación</span>' : ''}
       </div>
@@ -3945,9 +4112,9 @@ let deferredInstallPrompt = null;
 const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-// App de Android (WebView): expone window.ClaudeZer0Android para volver a la pantalla de elegir servidor
+// App de Android (WebView): expone window.Zer0CodeAndroid para volver a la pantalla de elegir servidor
 function inAndroidApp() {
-  return typeof window.ClaudeZer0Android?.changeServer === 'function';
+  return typeof window.Zer0CodeAndroid?.changeServer === 'function';
 }
 
 if ('serviceWorker' in navigator && window.isSecureContext) {
@@ -4045,16 +4212,16 @@ async function renderAppModal() {
     installBtn.textContent = 'Cambiar de servidor';
     installBtn.dataset.action = 'change-server';
     installBtn.hidden = false;
-    pushHint.innerHTML = 'La app de Android no recibe notificaciones push. Si quieres los avisos, instala ClaudeZer0 desde <strong>Chrome</strong> (menú ⋮ → <em>Instalar aplicación</em>).';
+    pushHint.innerHTML = 'La app de Android no recibe notificaciones push. Si quieres los avisos, instala Zer0Code desde <strong>Chrome</strong> (menú ⋮ → <em>Instalar aplicación</em>).';
     pushBtn.hidden = true;
     return;
   }
   if (!window.isSecureContext) {
-    installHint.innerHTML = 'Para instalarla hace falta abrir ClaudeZer0 por <strong>HTTPS</strong>. Instálala en el servidor con <code>bash deploy/install-linux.sh --tailscale</code> y entra por la dirección <code>https://…ts.net</code>.';
+    installHint.innerHTML = 'Para instalarla hace falta abrir Zer0Code por <strong>HTTPS</strong>. Instálala en el servidor con <code>bash deploy/install-linux.sh --tailscale</code> y entra por la dirección <code>https://…ts.net</code>.';
   } else if (isStandalone()) {
     installHint.textContent = 'Ya la estás usando como app instalada.';
   } else if (deferredInstallPrompt) {
-    installHint.textContent = 'Añade ClaudeZer0 a tu pantalla de inicio: se abre a pantalla completa, como una app más.';
+    installHint.textContent = 'Añade Zer0Code a tu pantalla de inicio: se abre a pantalla completa, como una app más.';
     installBtn.hidden = false;
   } else if (isIos()) {
     installHint.innerHTML = 'En Safari, toca <strong>Compartir</strong> y después <strong>Añadir a pantalla de inicio</strong>. En iPhone las notificaciones solo funcionan desde la app instalada.';
@@ -4075,8 +4242,8 @@ async function renderAppModal() {
     const sub = await currentPushSubscription().catch(() => null);
     const on = !!sub && Notification.permission === 'granted';
     pushHint.textContent = on
-      ? 'Activadas en este dispositivo: te avisa cuando Claude termina o necesita permiso y no tienes la app a la vista.'
-      : 'Recibe un aviso cuando Claude termine una tarea o necesite tu permiso, aunque tengas la app cerrada.';
+      ? 'Activadas en este dispositivo: te avisa cuando Zer0 termina o necesita permiso y no tienes la app a la vista.'
+      : 'Recibe un aviso cuando Zer0 termine una tarea o necesite tu permiso, aunque tengas la app cerrada.';
     pushBtn.textContent = on ? 'Desactivar en este dispositivo' : 'Activar notificaciones';
     pushBtn.dataset.on = on ? '1' : '';
     pushBtn.hidden = false;
@@ -4103,7 +4270,7 @@ function setupAppInstall() {
 
   document.getElementById('btn-app-install')?.addEventListener('click', async (e) => {
     if (e.currentTarget.dataset.action === 'change-server') {
-      window.ClaudeZer0Android.changeServer();
+      window.Zer0CodeAndroid.changeServer();
       return;
     }
     if (!deferredInstallPrompt) return;

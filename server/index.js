@@ -17,6 +17,7 @@ import {
   forgetUserWorkspace
 } from './workspaceManager.js';
 
+import { getPublicProfile, getProfilePrompt } from './profiles.js';
 import { getPushPublicKey, addSubscription, removeSubscription, forgetUserPush, notifyUser } from './pushManager.js';
 
 import { isRestricted, isPathAllowed, isModeAllowed, toolPathViolation } from './accessPolicy.js';
@@ -53,6 +54,7 @@ import {
 } from './modelsManager.js';
 
 import { refreshPricing, getPricingInfo } from './pricingManager.js';
+import { PROVIDERS, providerOf, getProviderModels, getProvidersStatus, executeWithProvider, setGeminiBackend } from './providers.js';
 import {
   summarizeResultCost,
   recordUsage,
@@ -87,6 +89,8 @@ import {
   createSession,
   addMessageToSession,
   setClaudeSessionId,
+  getProviderSessionId,
+  setProviderSessionId,
   deleteSession,
   assignLegacyOwner,
   deleteSessionsByOwner
@@ -134,7 +138,7 @@ assignLegacyOwner(getAdminUsername());
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
 app.post('/internal/permission', express.json({ limit: '20mb' }), async (req, res) => {
-  const secret = req.headers['x-claudezer0-secret'];
+  const secret = req.headers['x-zer0code-secret'];
   if (!LOOPBACK.has(req.socket.remoteAddress) || typeof secret !== 'string') {
     return res.status(403).json({ behavior: 'deny', message: 'No autorizado' });
   }
@@ -145,7 +149,7 @@ app.post('/internal/permission', express.json({ limit: '20mb' }), async (req, re
 app.use(express.json());
 // Cada instalación es su propia app: el nombre sale del .env de este servidor (APP_NAME) y la
 // app instalada solo habla con él. Nada de este servidor (claves, usuarios) va en el repositorio.
-const APP_NAME = (process.env.APP_NAME || 'ClaudeZer0').trim().slice(0, 40) || 'ClaudeZer0';
+const APP_NAME = (process.env.APP_NAME || 'Zer0Code').trim().slice(0, 40) || 'Zer0Code';
 const escapeAttr = (v) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
 app.get('/manifest.json', (req, res) => {
@@ -155,10 +159,17 @@ app.get('/manifest.json', (req, res) => {
   res.type('application/manifest+json').send(JSON.stringify(manifest));
 });
 
+// Versión de un archivo estático según su fecha de cambio: así Cloudflare y el navegador no sirven uno viejo
+const assetVersion = (file) => Math.floor(fs.statSync(path.join(projectRoot, 'public', file)).mtimeMs).toString(36);
+
 app.get(['/', '/index.html'], (req, res) => {
   const html = fs.readFileSync(path.join(projectRoot, 'public', 'index.html'), 'utf-8')
-    .replace('<title>ClaudeZer0</title>', `<title>${escapeAttr(APP_NAME)}</title>`)
-    .replace('name="apple-mobile-web-app-title" content="ClaudeZer0"', `name="apple-mobile-web-app-title" content="${escapeAttr(APP_NAME)}"`);
+    .replace('href="css/style.css"', `href="css/style.css?v=${assetVersion('css/style.css')}"`)
+    .replace('src="js/app.js"', `src="js/app.js?v=${assetVersion('js/app.js')}"`)
+    .replace('<title>Zer0Code</title>', `<title>${escapeAttr(APP_NAME)}</title>`)
+    .replace('<span class="brand-text">Zer0Code</span>', `<span class="brand-text">${escapeAttr(APP_NAME)}</span>`)
+    .replace('<h1 class="login-title">Zer0Code</h1>', `<h1 class="login-title">${escapeAttr(APP_NAME)}</h1>`)
+    .replace('name="apple-mobile-web-app-title" content="Zer0Code"', `name="apple-mobile-web-app-title" content="${escapeAttr(APP_NAME)}"`);
   res.type('html').send(html);
 });
 
@@ -212,7 +223,7 @@ setPermissionNotifier((username, data) => {
     const chat = getSession(data.request.sessionId, username);
     const title = chat && !chat.incognito ? chat.title : null;
     pushIfAway(username, {
-      title: 'Claude necesita permiso',
+      title: 'Zer0 necesita permiso',
       body: `${data.request.tool}${title ? ` · ${title}` : ''}`,
       tag: `permission-${data.request.id}`,
       sessionId: data.request.sessionId
@@ -221,6 +232,32 @@ setPermissionNotifier((username, data) => {
 });
 
 // Resumen corto de la respuesta para la notificación
+const CONTEXT_MAX_CHARS = 12000;
+
+/**
+ * Añadir al prompt la parte del chat que este proveedor no ha visto: todo si empieza sesión nueva,
+ * o lo que otro modelo respondió desde su último turno si retoma la suya
+ */
+function withChatContext(prompt, messages, provider, resuming) {
+  let start = 0;
+  if (resuming) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === 'assistant' && (m.provider || 'claude') === provider) {
+        start = i + 1;
+        break;
+      }
+    }
+  }
+  const unseen = messages.slice(start).filter(m => m.text && m.text.trim());
+  if (!unseen.length) return prompt;
+  let context = unseen
+    .map(m => `${m.role === 'user' ? 'Usuario' : `Asistente (${PROVIDERS[m.provider || 'claude']?.name || 'otro modelo'})`}: ${m.text.trim()}`)
+    .join('\n\n');
+  if (context.length > CONTEXT_MAX_CHARS) context = '…' + context.slice(-CONTEXT_MAX_CHARS);
+  return `[Contexto: mensajes anteriores de esta conversación, algunos respondidos por otro modelo]\n${context}\n\n[Mensaje nuevo del usuario]\n${prompt}`;
+}
+
 function notificationBody(text, fallback) {
   const clean = String(text || '').replace(/[#*_`>\[\]]/g, '').replace(/\s+/g, ' ').trim();
   if (!clean) return fallback;
@@ -266,7 +303,8 @@ function userInfo(user) {
     allowedModes: user.allowedModes,
     roots: user.roots,
     monthlyLimitUSD: user.monthlyLimitUSD,
-    monthSpentUSD: isRestricted(user) ? getMonthCost(user.username) : null
+    monthSpentUSD: isRestricted(user) ? getMonthCost(user.username) : null,
+    profile: getPublicProfile(user.username)
   };
 }
 
@@ -380,25 +418,46 @@ app.get('/api/status', requireAuth, (req, res) => {
     user: userInfo(req.user),
     currentWorkspace: getCurrentWorkspace(req.user),
     isTaskActive: isTaskActive(req.user.username),
-    availableModels: withPricing(getAvailableModels()),
+    providers: getProvidersStatus(),
+    availableModels: catalog(getAvailableModels()),
     defaultModel: getDefaultModelId()
   });
 });
+
+// Catálogo completo: modelos de Claude (con su tarifa) + los de ChatGPT y Gemini
+function catalog(claudeModels) {
+  return [...withPricing(claudeModels), ...getProviderModels()];
+}
 
 // Dynamic Models Management Endpoints
 app.get('/api/models', requireAuth, (req, res) => {
   res.json({
     success: true,
-    models: withPricing(getAvailableModels()),
+    models: catalog(getAvailableModels()),
     defaultModel: getDefaultModelId()
   });
+});
+
+// Con qué CLI se usa Gemini: Antigravity o Gemini CLI
+app.post('/api/providers/gemini-backend', requireAuth, requireAdmin, (req, res) => {
+  try {
+    setGeminiBackend(req.body?.backend);
+    res.json({
+      success: true,
+      providers: getProvidersStatus(),
+      models: catalog(getAvailableModels()),
+      defaultModel: getDefaultModelId()
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
 });
 
 app.post('/api/models', requireAuth, requireAdmin, (req, res) => {
   try {
     const { id, name, tag, badge, desc, icon } = req.body || {};
     const model = addOrUpdateModel({ id, name, tag, badge, desc, icon });
-    res.json({ success: true, model, models: withPricing(getAvailableModels()) });
+    res.json({ success: true, model, models: catalog(getAvailableModels()) });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -406,7 +465,7 @@ app.post('/api/models', requireAuth, requireAdmin, (req, res) => {
 
 app.delete('/api/models/:id', requireAuth, requireAdmin, (req, res) => {
   const ok = deleteCustomModel(req.params.id);
-  res.json({ success: ok, models: withPricing(getAvailableModels()) });
+  res.json({ success: ok, models: catalog(getAvailableModels()) });
 });
 
 /**
@@ -426,7 +485,7 @@ function resolveModelsCredential(clientKey = null) {
 async function runModelsSync(clientKey = null, reason = 'manual') {
   await refreshPricing();
   const result = await syncModelsFromAnthropic(resolveModelsCredential(clientKey));
-  if (result.models) result.models = withPricing(result.models);
+  if (result.models) result.models = catalog(result.models);
   if (result.success) {
     const changes = result.addedCount || result.removedCount
       ? ` (+${result.addedCount} / -${result.removedCount})`
@@ -656,6 +715,9 @@ wss.on('connection', (ws) => {
           return;
         }
 
+        const provider = providerOf(model || getDefaultModelId());
+        const providerName = PROVIDERS[provider].name;
+
         // Get or create session
         let currentSession = sessionId ? getSession(sessionId, owner) : null;
         if (!currentSession) {
@@ -672,6 +734,10 @@ wss.on('connection', (ws) => {
           timestamp: Date.now()
         };
 
+        // Lo que este proveedor aún no ha visto del chat (otro modelo respondió entre medias): va como contexto
+        const resumeId = getProviderSessionId(currentSession, provider);
+        const taskPrompt = withChatContext(prompt, currentSession.messages, provider, !!resumeId);
+
         addMessageToSession(currentSession.id, userMsg);
         sendToUser(owner, { type: 'user_message', sessionId: currentSession.id, message: userMsg });
 
@@ -683,11 +749,12 @@ wss.on('connection', (ws) => {
           tools: [],
           workspace: targetWs,
           model: model || getDefaultModelId(),
+          provider,
           timestamp: Date.now(),
           status: 'running'
         };
         sendToUser(owner, { type: 'assistant_start', sessionId: currentSession.id, message: assistantMsg });
-        liveTasks.set(owner, { sessionId: currentSession.id, seq: 0, message: assistantMsg });
+        liveTasks.set(owner, { sessionId: currentSession.id, seq: 0, message: assistantMsg, provider });
         const endLiveTask = () => {
           if (liveTasks.get(owner)?.message === assistantMsg) liveTasks.delete(owner);
         };
@@ -700,11 +767,12 @@ wss.on('connection', (ws) => {
         });
 
         try {
-          executeTask({
-            prompt,
+          executeWithProvider(provider, {
+            prompt: taskPrompt,
             workspace: targetWs,
-            sessionId: currentSession.claudeSessionId,
+            sessionId: resumeId,
             owner,
+            restricted: isRestricted(user),
             permissionMode: mode,
             permissionBridge: { url: permissionCallbackUrl(), secret: permissionSecret },
             model: model || null,
@@ -712,8 +780,12 @@ wss.on('connection', (ws) => {
             attachments: attachmentList,
             effort: effort || null,
             outputStyle: outputStyle || null,
-            customInstructions: typeof customInstructions === 'string' ? customInstructions : null,
+            customInstructions: [getProfilePrompt(owner), typeof customInstructions === 'string' ? customInstructions : '']
+              .filter(Boolean).join('\n\n') || null,
             onEvent: (event) => {
+              // Id de la sesión del proveedor, por si el servidor se apaga antes de terminar
+              const live = liveTasks.get(owner);
+              if (event.sessionId && live?.message === assistantMsg) live.providerSessionId = event.sessionId;
               if (event.type === 'text_delta') {
                 assistantMsg.text += event.text;
                 sendTaskEvent(owner, { type: 'stream_delta', sessionId: currentSession.id, text: event.text });
@@ -767,23 +839,23 @@ wss.on('connection', (ws) => {
               }
               assistantMsg.duration = result.result?.duration_ms || null;
 
-              // Coste de la respuesta según Claude Code (precio de tarifa de la API)
-              const cost = summarizeResultCost(result.result);
+              // Coste de la respuesta según Claude Code (precio de tarifa de la API); ChatGPT y Gemini van por suscripción
+              const cost = provider === 'claude' ? summarizeResultCost(result.result) : null;
               if (cost) {
                 assistantMsg.cost = cost;
                 recordUsage(cost, owner, { hostAccount: !usingOwnKey });
               }
 
               if (result.sessionId) {
-                setClaudeSessionId(currentSession.id, result.sessionId);
+                setProviderSessionId(currentSession.id, provider, result.sessionId);
               }
 
               addMessageToSession(currentSession.id, assistantMsg);
 
               pushIfAway(owner, {
                 // En incógnito no se muestra nada de la conversación en la pantalla de bloqueo
-                title: currentSession.incognito ? 'Claude ha terminado' : currentSession.title || 'Claude ha terminado',
-                body: currentSession.incognito ? 'Chat incógnito' : notificationBody(assistantMsg.text, 'Claude ha terminado la tarea'),
+                title: currentSession.incognito ? `${providerName} ha terminado` : currentSession.title || `${providerName} ha terminado`,
+                body: currentSession.incognito ? 'Chat incógnito' : notificationBody(assistantMsg.text, `${providerName} ha terminado la tarea`),
                 tag: `task-${currentSession.id}`,
                 sessionId: currentSession.id
               });
@@ -795,13 +867,13 @@ wss.on('connection', (ws) => {
                 result
               });
 
-              if (!apiKey) broadcastPlanLimits();
+              if (!apiKey && provider === 'claude') broadcastPlanLimits();
             },
             onError: (err) => {
               unregisterTask(permissionSecret);
               endLiveTask();
               assistantMsg.status = 'error';
-              assistantMsg.error = err.message || 'Error en la ejecución de Claude Code';
+              assistantMsg.error = err.message || `Error en la ejecución de ${PROVIDERS[provider].cli}`;
               if (err.text) assistantMsg.text = err.text;
 
               addMessageToSession(currentSession.id, assistantMsg);
@@ -895,7 +967,7 @@ server.listen(PORT, HOST, () => {
   }
 
   console.log('====================================================');
-  console.log('       🌟 CLAUDEZER0 - INTERFAZ CLAUDE.AI 🌟        ');
+  console.log('       🌟 ZER0CODE - INTERFAZ CLAUDE.AI 🌟        ');
   console.log('====================================================');
   console.log(`💻 Acceso PC:           http://localhost:${PORT}`);
   if (HOST === '0.0.0.0') {
@@ -911,8 +983,29 @@ server.listen(PORT, HOST, () => {
   console.log('====================================================');
 
   // Los accesos directos de los instaladores (Windows y macOS) abren la web al arrancar
-  if (process.env.CLAUDEZER0_OPEN_BROWSER === '1') openInBrowser(`http://localhost:${PORT}`);
+  if (process.env.ZER0CODE_OPEN_BROWSER === '1') openInBrowser(`http://localhost:${PORT}`);
 });
+
+// Al apagar o reiniciar (pm2 restart, Ctrl+C) se guarda lo que llevan las respuestas en curso;
+// si no, la respuesta se perdía entera porque solo se guarda al terminar la tarea.
+function saveLiveTasksOnShutdown(signal) {
+  for (const [owner, live] of liveTasks) {
+    const msg = live.message;
+    msg.status = 'error';
+    msg.error = 'El servidor se reinició antes de que terminara la respuesta.';
+    msg.tools.forEach(t => { if (t.status === 'running') t.status = 'error'; });
+    try {
+      if (live.providerSessionId) setProviderSessionId(live.sessionId, live.provider, live.providerSessionId);
+      addMessageToSession(live.sessionId, msg);
+    } catch (err) {
+      console.error(`No se pudo guardar la respuesta en curso de ${owner}:`, err.message);
+    }
+  }
+  liveTasks.clear();
+  process.exit(signal === 'SIGINT' ? 130 : 143);
+}
+process.once('SIGINT', () => saveLiveTasksOnShutdown('SIGINT'));
+process.once('SIGTERM', () => saveLiveTasksOnShutdown('SIGTERM'));
 
 function openInBrowser(url) {
   const [cmd, args] = process.platform === 'win32'

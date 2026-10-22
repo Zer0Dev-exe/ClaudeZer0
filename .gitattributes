@@ -1,5 +1,5 @@
 *.sh text eol=lf
-packaging/linux/claudezer0 text eol=lf
+packaging/linux/zer0code text eol=lf
 *.cmd text eol=crlf
 *.iss text eol=crlf
 *.ico binary

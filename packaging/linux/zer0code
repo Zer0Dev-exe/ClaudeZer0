@@ -1,17 +1,17 @@
 #!/bin/sh
-# Comando «claudezer0» del paquete .deb. El programa está en /opt/claudezer0 y los datos de cada
-# usuario en ~/.config/claudezer0 (.env) y ~/.local/share/claudezer0 (conversaciones, usuarios, claves).
+# Comando «zer0code» del paquete .deb. El programa está en /opt/zer0code y los datos de cada
+# usuario en ~/.config/zer0code (.env) y ~/.local/share/zer0code (conversaciones, usuarios, claves).
 set -e
 
-APP=/opt/claudezer0
-CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/claudezer0"
-DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/claudezer0"
-SERVICE="claudezer0@$(id -un)"
+APP=/opt/zer0code
+CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/zer0code"
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/zer0code"
+SERVICE="zer0code@$(id -un)"
 
 prepare() {
   mkdir -p "$CONF_DIR" "$DATA_DIR"
   [ -f "$CONF_DIR/.env" ] || cp "$APP/app/.env.example" "$CONF_DIR/.env"
-  export CLAUDEZER0_DATA_DIR="$DATA_DIR" CLAUDEZER0_ENV_FILE="$CONF_DIR/.env"
+  export ZER0CODE_DATA_DIR="$DATA_DIR" ZER0CODE_ENV_FILE="$CONF_DIR/.env"
 }
 
 case "${1:-run}" in
@@ -24,13 +24,13 @@ case "${1:-run}" in
     ;;
   status)
     "$APP/app/node_modules/.bin/claude" auth status || true
-    systemctl status "$SERVICE" --no-pager 2>/dev/null || echo "El servicio no está activado (claudezer0 enable)."
+    systemctl status "$SERVICE" --no-pager 2>/dev/null || echo "El servicio no está activado (zer0code enable)."
     ;;
   enable)
     prepare
     sudo systemctl enable --now "$SERVICE"
-    echo "ClaudeZer0 arrancará solo al encender la máquina, con el usuario $(id -un)."
-    echo "Logs: claudezer0 logs"
+    echo "Zer0Code arrancará solo al encender la máquina, con el usuario $(id -un)."
+    echo "Logs: zer0code logs"
     ;;
   disable)
     sudo systemctl disable --now "$SERVICE"
@@ -50,9 +50,9 @@ case "${1:-run}" in
     ;;
   help|--help|-h|*)
     cat <<EOF
-Uso: claudezer0 [comando]
+Uso: zer0code [comando]
 
-  run       Arrancar ClaudeZer0 en primer plano (por defecto)
+  run       Arrancar Zer0Code en primer plano (por defecto)
   login     Vincular tu cuenta de Claude (Pro, Max o Team)
   enable    Activarlo como servicio: arranca solo y sigue aunque cierres el SSH
   disable   Desactivar el servicio

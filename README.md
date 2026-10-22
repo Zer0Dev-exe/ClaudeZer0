@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="banner.svg" alt="ClaudeZer0" width="100%">
+  <img src="banner.svg" alt="Zer0Code" width="100%">
 </p>
 
 <h3 align="center">Claude Code en tu navegador y en tu móvil. Desde tu propio servidor.</h3>
@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Zer0Dev-exe/ClaudeZer0/releases/latest"><img src="https://img.shields.io/github/v/release/Zer0Dev-exe/ClaudeZer0?style=flat-square&color=D97757&label=versi%C3%B3n" alt="Versión"></a>
+  <a href="https://github.com/Zer0Dev-exe/Zer0Code/releases/latest"><img src="https://img.shields.io/github/v/release/Zer0Dev-exe/Zer0Code?style=flat-square&color=D97757&label=versi%C3%B3n" alt="Versión"></a>
   <img src="https://img.shields.io/badge/Plataforma-Windows%20%7C%20Linux%20%7C%20macOS-informational?style=flat-square" alt="Multiplataforma">
   <img src="https://img.shields.io/badge/App-Android%20%7C%20iPhone-success?style=flat-square" alt="App móvil">
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22-success?style=flat-square&logo=node.js&logoColor=white" alt="Node.js">
@@ -18,14 +18,14 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/hero.jpg" alt="ClaudeZer0 en el escritorio y en el móvil: una conversación con herramientas y una petición de permiso" width="100%">
+  <img src="docs/screenshots/hero.jpg" alt="Zer0Code en el escritorio y en el móvil: una conversación con herramientas y una petición de permiso" width="100%">
 </p>
 
 ---
 
-## ¿Por qué ClaudeZer0?
+## ¿Por qué Zer0Code?
 
-Claude Code es potente, pero vive en una terminal. ClaudeZer0 lo pone en una web que puedes abrir desde cualquier dispositivo, sin renunciar a nada:
+Claude Code es potente, pero vive en una terminal. Zer0Code lo pone en una web que puedes abrir desde cualquier dispositivo, sin renunciar a nada:
 
 - **📱 Una app en tu móvil.** Se instala desde el navegador en Android y iPhone, con su icono y a pantalla completa. Sin tiendas y sin avisos de seguridad.
 - **⏳ Sigue trabajando aunque cierres.** Las tareas se ejecutan en el servidor: bloquea el móvil, vuelve en una hora y la respuesta estará ahí, continuando en directo.
@@ -38,53 +38,53 @@ Claude Code es potente, pero vive en una terminal. ClaudeZer0 lo pone en una web
 
 ## 📦 Descargar
 
-Descarga el instalador de tu sistema en la [**última versión**](https://github.com/Zer0Dev-exe/ClaudeZer0/releases/latest). Incluyen Node.js y Claude Code: no hace falta tener nada más instalado.
+Descarga el instalador de tu sistema en la [**última versión**](https://github.com/Zer0Dev-exe/Zer0Code/releases/latest). Incluyen Node.js y Claude Code: no hace falta tener nada más instalado.
 
 | Sistema | Archivo | Qué instala |
 | :--- | :--- | :--- |
-| 🪟 **Windows 10 y 11** (x64) | `ClaudeZer0-Setup-…-x64.exe` | El servidor, con accesos en el menú Inicio |
-| 🐧 **Debian y Ubuntu** (x64 y ARM) | `claudezer0_…_amd64.deb` · `claudezer0_…_arm64.deb` | El servidor y el comando `claudezer0` |
-| 🍎 **macOS 12 o superior** (Apple Silicon) | `ClaudeZer0-…-arm64.dmg` | ClaudeZer0.app |
-| 🤖 **Android 8 o superior** | `ClaudeZer0-….apk` | La app que se conecta a tu servidor |
+| 🪟 **Windows 10 y 11** (x64) | `Zer0Code-Setup-…-x64.exe` | El servidor, con accesos en el menú Inicio |
+| 🐧 **Debian y Ubuntu** (x64 y ARM) | `zer0code_…_amd64.deb` · `zer0code_…_arm64.deb` | El servidor y el comando `zer0code` |
+| 🍎 **macOS 12 o superior** (Apple Silicon) | `Zer0Code-…-arm64.dmg` | Zer0Code.app |
+| 🤖 **Android 8 o superior** | `Zer0Code-….apk` | La app que se conecta a tu servidor |
 
 Cada versión trae un `SHA256SUMS.txt` para comprobar que la descarga está intacta.
 
 <details>
 <summary><b>🪟 Windows</b></summary>
 
-1. Ejecuta `ClaudeZer0-Setup-…-x64.exe`. Se instala para tu usuario, sin pedir permisos de administrador.
+1. Ejecuta `Zer0Code-Setup-…-x64.exe`. Se instala para tu usuario, sin pedir permisos de administrador.
 2. En el menú Inicio, abre **Vincular cuenta de Claude** e inicia sesión.
-3. Abre **ClaudeZer0**: arranca el servidor y abre la web. Mientras la ventana esté abierta, ClaudeZer0 funciona.
+3. Abre **Zer0Code**: arranca el servidor y abre la web. Mientras la ventana esté abierta, Zer0Code funciona.
 
-Opcionalmente, el instalador puede hacer que arranque solo al encender el equipo. Tu configuración y tus conversaciones se guardan en `%APPDATA%\ClaudeZer0` y se conservan al actualizar o desinstalar.
+Opcionalmente, el instalador puede hacer que arranque solo al encender el equipo. Tu configuración y tus conversaciones se guardan en `%APPDATA%\Zer0Code` y se conservan al actualizar o desinstalar.
 
 > [!NOTE]
-> Como el instalador no está firmado con un certificado de pago, Windows muestra **«Windows protegió su PC»**: pulsa *Más información* → *Ejecutar de todas formas*. La primera vez, el firewall pregunta si ClaudeZer0 puede usar la red. Acepta si quieres entrar desde el móvil.
+> Como el instalador no está firmado con un certificado de pago, Windows muestra **«Windows protegió su PC»**: pulsa *Más información* → *Ejecutar de todas formas*. La primera vez, el firewall pregunta si Zer0Code puede usar la red. Acepta si quieres entrar desde el móvil.
 </details>
 
 <details>
 <summary><b>🐧 Debian y Ubuntu</b></summary>
 
 ```bash
-sudo apt install ./claudezer0_*_amd64.deb   # o el _arm64.deb (Raspberry Pi y servidores ARM)
-claudezer0 login     # vincula tu cuenta de Claude
-claudezer0 enable    # lo deja como servicio: arranca solo y sigue aunque cierres el SSH
+sudo apt install ./zer0code_*_amd64.deb   # o el _arm64.deb (Raspberry Pi y servidores ARM)
+zer0code login     # vincula tu cuenta de Claude
+zer0code enable    # lo deja como servicio: arranca solo y sigue aunque cierres el SSH
 ```
 
-Usa tu propio usuario, no root, para que Claude pueda trabajar en tus proyectos. `claudezer0 help` muestra todos los comandos: `logs`, `config`, `restart`, `status`… La configuración está en `~/.config/claudezer0/.env` y los datos en `~/.local/share/claudezer0`.
+Usa tu propio usuario, no root, para que Claude pueda trabajar en tus proyectos. `zer0code help` muestra todos los comandos: `logs`, `config`, `restart`, `status`… La configuración está en `~/.config/zer0code/.env` y los datos en `~/.local/share/zer0code`.
 </details>
 
 <details>
 <summary><b>🍎 macOS</b></summary>
 
-1. Abre el `.dmg` y arrastra **ClaudeZer0** a *Aplicaciones*.
+1. Abre el `.dmg` y arrastra **Zer0Code** a *Aplicaciones*.
 2. Vincula tu cuenta de Claude desde la Terminal:
    ```bash
-   /Applications/ClaudeZer0.app/Contents/Resources/app/node_modules/.bin/claude auth login
+   /Applications/Zer0Code.app/Contents/Resources/app/node_modules/.bin/claude auth login
    ```
-3. Abre ClaudeZer0: arranca el servidor y abre la web. Para pararlo, sal de la app desde el Dock.
+3. Abre Zer0Code: arranca el servidor y abre la web. Para pararlo, sal de la app desde el Dock.
 
-Tus datos se guardan en `~/Library/Application Support/ClaudeZer0`.
+Tus datos se guardan en `~/Library/Application Support/Zer0Code`.
 
 > [!NOTE]
 > La app no está notarizada por Apple (hace falta una cuenta de desarrollador de pago), así que la primera vez macOS no la deja abrir. Ve a **Ajustes del Sistema → Privacidad y seguridad** y pulsa **Abrir igualmente**. Solo hay que hacerlo una vez.
@@ -94,7 +94,7 @@ Tus datos se guardan en `~/Library/Application Support/ClaudeZer0`.
 <summary><b>🤖 Android</b></summary>
 
 1. Descarga el `.apk` en el móvil y ábrelo. Android pedirá permitir instalar apps desde el navegador o el gestor de archivos: es el aviso normal para cualquier app que no viene de Play Store.
-2. Abre ClaudeZer0 y escribe la dirección de **tu** servidor, por ejemplo `https://mi-servidor.tailnet.ts.net` o `http://192.168.1.50:5050`. La app comprueba que es un servidor de ClaudeZer0 y la recuerda.
+2. Abre Zer0Code y escribe la dirección de **tu** servidor, por ejemplo `https://mi-servidor.tailnet.ts.net` o `http://192.168.1.50:5050`. La app comprueba que es un servidor de Zer0Code y la recuerda.
 3. Para cambiar de servidor: menú de usuario → **App y notificaciones** → *Cambiar de servidor*.
 
 La app de Android no recibe notificaciones push. Si quieres que el móvil te avise cuando Claude termine, instala la app desde Chrome (PWA, más abajo); puedes tener las dos.
@@ -107,14 +107,14 @@ La app de Android no recibe notificaciones push. Si quieres que el móvil te avi
 Necesitas [Node.js](https://nodejs.org) 22 o superior y [pnpm](https://pnpm.io) (o npm).
 
 ```bash
-git clone https://github.com/Zer0Dev-exe/ClaudeZer0.git
-cd ClaudeZer0
+git clone https://github.com/Zer0Dev-exe/Zer0Code.git
+cd Zer0Code
 pnpm install
 pnpm auth:login      # vincula tu suscripción de Claude (o pon ANTHROPIC_API_KEY en .env)
 pnpm start
 ```
 
-Abre **http://localhost:5050** y entra con `admin` / `claudezer0`. La primera vez te pedirá cambiar la contraseña.
+Abre **http://localhost:5050** y entra con `admin` / `zer0code`. La primera vez te pedirá cambiar la contraseña.
 
 ¿Lo quieres en un servidor y en el móvil? Mira [Instalar en un servidor](#servidor): es un solo comando.
 
@@ -186,13 +186,13 @@ Paleta cálida con acentos terracota y tipografía editorial, inspirada en claud
 En un servidor Linux con systemd (un VPS, una Raspberry Pi o un PC al que entras por SSH):
 
 ```bash
-git clone https://github.com/Zer0Dev-exe/ClaudeZer0.git
-cd ClaudeZer0
+git clone https://github.com/Zer0Dev-exe/Zer0Code.git
+cd Zer0Code
 pnpm auth:login                          # o ANTHROPIC_API_KEY en .env
 bash deploy/install-linux.sh --tailscale
 ```
 
-El script instala las dependencias, crea el `.env` si no existe y deja ClaudeZer0 como **servicio del sistema**:
+El script instala las dependencias, crea el `.env` si no existe y deja Zer0Code como **servicio del sistema**:
 - Arranca solo al encender la máquina y se reinicia si falla.
 - **Sigue funcionando aunque cierres la sesión SSH.**
 
@@ -200,9 +200,9 @@ Con `--tailscale`, la web queda publicada en `https://<tu-maquina>.<tu-red>.ts.n
 
 | Para… | Comando |
 | :--- | :--- |
-| Ver el estado | `systemctl status claudezer0` |
-| Ver los logs en directo | `journalctl -u claudezer0 -f` |
-| Reiniciar | `sudo systemctl restart claudezer0` |
+| Ver el estado | `systemctl status zer0code` |
+| Ver los logs en directo | `journalctl -u zer0code -f` |
+| Reiniciar | `sudo systemctl restart zer0code` |
 
 ### Instalar la app en el móvil
 
@@ -213,7 +213,7 @@ Con `--tailscale`, la web queda publicada en `https://<tu-maquina>.<tu-red>.ts.n
 
 ### Cada instalación es independiente
 
-La app no es un instalador común: se instala **desde tu propio servidor** y solo habla con él. Quien instale ClaudeZer0 en su máquina tendrá su propia app, sin acceso a la tuya.
+La app no es un instalador común: se instala **desde tu propio servidor** y solo habla con él. Quien instale Zer0Code en su máquina tendrá su propia app, sin acceso a la tuya.
 
 - Las claves de las notificaciones, los usuarios, las contraseñas y las sesiones se generan en cada servidor, dentro de `data/`. Esa carpeta nunca se sube al repositorio, igual que el `.env`.
 - Para entrar hace falta un usuario de ese servidor. Con Tailscale, además, solo llegan tus propios dispositivos.
@@ -230,11 +230,11 @@ Todo se configura en el archivo `.env` (parte de `.env.example`):
 MODE=Hoster
 
 # Administrador. El resto de usuarios se crean desde la web.
-CLAUDEZER0_USER=admin
-CLAUDEZER0_PASSWORD=claudezer0
+ZER0CODE_USER=admin
+ZER0CODE_PASSWORD=zer0code
 
 # Nombre de la app en el móvil y en la pestaña
-# APP_NAME=ClaudeZer0
+# APP_NAME=Zer0Code
 
 PORT=5050
 # Pon 127.0.0.1 para que solo se pueda entrar desde este equipo (p. ej. con Tailscale)
@@ -268,7 +268,7 @@ Varias personas pueden usar el mismo servidor, cada una con su cuenta. Es especi
 
 | | Administrador | Usuario |
 | :--- | :--- | :--- |
-| **Cómo se crea** | Con `CLAUDEZER0_USER` y `CLAUDEZER0_PASSWORD` del `.env` | Lo crea el administrador desde la web |
+| **Cómo se crea** | Con `ZER0CODE_USER` y `ZER0CODE_PASSWORD` del `.env` | Lo crea el administrador desde la web |
 | **Carpetas** | Cualquiera del equipo | Solo sus carpetas permitidas (y subcarpetas) |
 | **Modos de ejecución** | Todos | Los que le conceda el administrador |
 | **Límite de gasto** | Sin límite | Límite mensual opcional |
@@ -292,7 +292,7 @@ Varias personas pueden usar el mismo servidor, cada una con su cuenta. Es especi
 ## 📁 Estructura del proyecto
 
 ```
-ClaudeZer0/
+Zer0Code/
 ├── deploy/install-linux.sh        # Instalación desde el código como servicio systemd (+ HTTPS con Tailscale)
 ├── packaging/                     # Instaladores: Windows (Inno Setup), .deb, .dmg y app de Android
 ├── .github/workflows/release.yml  # Compila, prueba y adjunta los instaladores a cada release

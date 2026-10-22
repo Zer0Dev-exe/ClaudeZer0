@@ -3,7 +3,7 @@ import path from 'path';
 import os from 'os';
 import { isRestricted, isPathAllowed } from './accessPolicy.js';
 
-const CONFIG_FILE = path.join(os.homedir(), '.claudezer0_config.json');
+const CONFIG_FILE = path.join(os.homedir(), '.zer0code_config.json');
 
 // Default initial workspace
 let defaultWorkspace = path.join(os.homedir(), 'Documents');

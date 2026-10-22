@@ -1,4 +1,4 @@
--- ClaudeZer0.app: arranca el servidor al abrirla y lo detiene al salir (Dock -> Salir o Cmd+Q).
+-- Zer0Code.app: arranca el servidor al abrirla y lo detiene al salir (Dock -> Salir o Cmd+Q).
 property serverPid : ""
 
 on run

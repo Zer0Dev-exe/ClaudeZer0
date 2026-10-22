@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Instala ClaudeZer0 como servicio de systemd en un servidor Linux (VPS, Raspberry, PC por SSH).
+# Instala Zer0Code como servicio de systemd en un servidor Linux (VPS, Raspberry, PC por SSH).
 # El servidor arranca solo al encender la máquina y sigue funcionando aunque cierres la sesión SSH.
 #
 # Uso (desde la carpeta del proyecto, con tu usuario normal, no root):
@@ -8,7 +8,7 @@
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SERVICE=claudezer0
+SERVICE=zer0code
 RUN_USER="$(id -un)"
 USE_TAILSCALE=0
 [[ "${1:-}" == "--tailscale" ]] && USE_TAILSCALE=1
@@ -53,7 +53,7 @@ say "Creando el servicio $SERVICE"
 SERVICE_PATH="$(dirname "$NODE_BIN"):$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 sudo tee "/etc/systemd/system/$SERVICE.service" >/dev/null <<EOF
 [Unit]
-Description=ClaudeZer0 (Claude Code desde el navegador y el móvil)
+Description=Zer0Code (Claude Code desde el navegador y el móvil)
 After=network-online.target
 Wants=network-online.target
 
@@ -90,7 +90,7 @@ sleep 1
 systemctl is-active --quiet "$SERVICE" || { sudo journalctl -u "$SERVICE" -n 30 --no-pager; fail "El servicio no ha arrancado."; }
 
 echo
-say "ClaudeZer0 está en marcha como servicio"
+say "Zer0Code está en marcha como servicio"
 if (( USE_TAILSCALE )); then
   echo "    Abre en el móvil (con Tailscale activo): https://$TS_NAME"
 else

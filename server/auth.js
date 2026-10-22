@@ -14,7 +14,7 @@ const DEFAULT_USER_MODES = ['manual', 'acceptEdits', 'plan'];
 const USERNAME_RE = /^[a-zA-Z0-9_.-]{3,32}$/;
 
 const DEFAULT_USER = 'admin';
-const DEFAULT_PASSWORD = 'claudezer0';
+const DEFAULT_PASSWORD = 'zer0code';
 const MIN_PASSWORD_LENGTH = 8;
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // caducan tras 30 días sin uso
@@ -69,12 +69,12 @@ function hashToken(token) {
 
 // --------------------------------------------------------------------------
 // Credenciales: el .env solo siembra la contraseña inicial; después se guarda cifrada.
-// Si cambias CLAUDEZER0_PASSWORD en el .env, esa pasa a ser la contraseña (sirve para recuperarla).
+// Si cambias ZER0CODE_PASSWORD en el .env, esa pasa a ser la contraseña (sirve para recuperarla).
 // --------------------------------------------------------------------------
 let credentials = loadCredentials();
 
 function envPassword() {
-  return process.env.CLAUDEZER0_PASSWORD || DEFAULT_PASSWORD;
+  return process.env.ZER0CODE_PASSWORD || DEFAULT_PASSWORD;
 }
 
 function loadCredentials() {
@@ -85,7 +85,7 @@ function loadCredentials() {
   }
   // Primera ejecución o la contraseña del .env ha cambiado: sembrar desde el .env
   const seeded = {
-    username: process.env.CLAUDEZER0_USER || DEFAULT_USER,
+    username: process.env.ZER0CODE_USER || DEFAULT_USER,
     password: hashPassword(envPass),
     seed: hashPassword(envPass),
     mustChangePassword: envPass === DEFAULT_PASSWORD || envPass.length < MIN_PASSWORD_LENGTH,

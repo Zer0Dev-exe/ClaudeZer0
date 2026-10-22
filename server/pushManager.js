@@ -34,7 +34,7 @@ if (!store.vapid) {
 }
 store.subscriptions ||= [];
 // El contacto lo exigen los servicios push; no se usa para nada más
-webpush.setVapidDetails('mailto:claudezer0@localhost', store.vapid.publicKey, store.vapid.privateKey);
+webpush.setVapidDetails('mailto:zer0code@localhost', store.vapid.publicKey, store.vapid.privateKey);
 
 export function getPushPublicKey() {
   return store.vapid.publicKey;

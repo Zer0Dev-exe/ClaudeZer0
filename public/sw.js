@@ -1,16 +1,16 @@
-// Service worker de ClaudeZer0: hace la web instalable como app, la abre aunque no haya red
+// Service worker de Zer0Code: hace la web instalable como app, la abre aunque no haya red
 // (con aviso de «sin conexión») y muestra las notificaciones push del servidor.
-const CACHE = 'claudezer0-v1';
+const CACHE = 'zer0code-v6';
 const SHELL = [
   '/',
   '/css/style.css',
   '/js/app.js',
-  '/manifest.json',
-  '/favicon.svg',
-  '/icon.svg',
-  '/icon-192.png',
-  '/icon-512.png',
-  '/apple-touch-icon.png'
+  '/manifest.json?v=4',
+  '/favicon.svg?v=4',
+  '/icon.svg?v=4',
+  '/icon-192.png?v=4',
+  '/icon-512.png?v=4',
+  '/apple-touch-icon.png?v=4'
 ];
 
 self.addEventListener('install', (event) => {
@@ -60,12 +60,12 @@ self.addEventListener('push', (event) => {
     data = { body: event.data ? event.data.text() : '' };
   }
   event.waitUntil(
-    self.registration.showNotification(data.title || 'ClaudeZer0', {
+    self.registration.showNotification(data.title || 'Zer0Code', {
       body: data.body || '',
       tag: data.tag,
       renotify: !!data.tag,
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
+      icon: '/icon-192.png?v=4',
+      badge: '/icon-192.png?v=4',
       data: { sessionId: data.sessionId || null }
     })
   );
