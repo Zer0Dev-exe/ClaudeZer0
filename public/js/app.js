@@ -1618,6 +1618,20 @@ function handleWsMessage(data) {
       if (data.user) applyCurrentUser(data.user);
       break;
 
+    // Otro dispositivo de la misma cuenta ha enviado un mensaje en la conversación que tengo abierta
+    case 'user_message':
+      if (data.sessionId && data.sessionId === activeSessionId && !isRunning && data.message) {
+        appendUserMsg(data.message.text, (data.message.attachments || []).map(name => ({ name })));
+        startStreamingAssistant();
+        setRunning(true);
+      }
+      break;
+
+    // Otro dispositivo creó, borró o actualizó una conversación: refrescar la lista
+    case 'sessions_changed':
+      scheduleSessionsRefresh();
+      break;
+
     case 'permission_request':
       if (data.request) {
         pendingPermissions.set(data.request.id, data.request);
@@ -4298,4 +4312,26 @@ function setupAppInstall() {
       renderAppModal();
     }
   });
+}
+
+
+// Sincronización entre dispositivos: varios avisos seguidos se juntan en una sola descarga de la lista
+let sessionsRefreshTimer = null;
+function scheduleSessionsRefresh() {
+  clearTimeout(sessionsRefreshTimer);
+  sessionsRefreshTimer = setTimeout(async () => {
+    try {
+      const res = await authFetch('/api/sessions');
+      const data = await res.json();
+      const sessions = data.sessions || [];
+      renderSessionsList(sessions);
+      // La conversación abierta se borró en otro dispositivo
+      if (activeSessionId && !incognitoMode && !isRunning && !sessions.some(s => s.id === activeSessionId)) {
+        newChat();
+        showToast('Esta conversación se eliminó en otro dispositivo');
+      }
+    } catch (e) {
+      // se reintenta con el siguiente aviso
+    }
+  }, 250);
 }

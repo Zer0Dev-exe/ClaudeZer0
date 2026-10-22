@@ -3,7 +3,7 @@ import crypto from 'crypto';
 // Peticiones de permiso de Claude Code a la espera de que el usuario responda desde la web
 const PERMISSION_TIMEOUT_MS = 10 * 60 * 1000;
 
-const tasks = new Map(); // secreto -> { owner, chatId, check }
+const tasks = new Map(); // secreto -> { owner, chatId, check, auto }
 const pending = new Map(); // id -> petición pendiente
 const alwaysAllowed = new Map(); // chatId -> Set de herramientas permitidas para toda la conversación
 
@@ -19,10 +19,13 @@ export function setPermissionNotifier(fn) {
 /**
  * Registrar una tarea que puede pedir permisos. `check(tool, input)` devuelve un motivo
  * para denegar automáticamente (p. ej. ruta fuera de las carpetas permitidas) o null.
+ * `auto(tool, input)` (opcional) decide sin preguntar al usuario: devuelve la decisión
+ * ({ behavior: 'allow' | 'deny', ... }) o null para preguntar como siempre. Lo usa el revisor
+ * del orquestador, que trabaja sin nadie delante y solo puede leer.
  */
-export function registerTask({ owner, chatId, check = () => null }) {
+export function registerTask({ owner, chatId, check = () => null, auto = null }) {
   const secret = crypto.randomBytes(24).toString('hex');
-  tasks.set(secret, { owner, chatId, check });
+  tasks.set(secret, { owner, chatId, check, auto });
   return secret;
 }
 
@@ -65,6 +68,9 @@ export function requestPermission(secret, { tool_name, input, tool_use_id }) {
 
   const blocked = task.check(tool, toolInput);
   if (blocked) return Promise.resolve({ behavior: 'deny', message: blocked });
+
+  const automatic = task.auto ? task.auto(tool, toolInput) : null;
+  if (automatic) return Promise.resolve(automatic.behavior === 'allow' ? { updatedInput: toolInput, ...automatic } : automatic);
 
   if (alwaysAllowed.get(task.chatId)?.has(tool)) {
     return Promise.resolve({ behavior: 'allow', updatedInput: toolInput });

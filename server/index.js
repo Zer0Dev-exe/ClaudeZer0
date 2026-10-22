@@ -22,6 +22,7 @@ import { getPushPublicKey, addSubscription, removeSubscription, forgetUserPush, 
 
 import { isRestricted, isPathAllowed, isModeAllowed, toolPathViolation } from './accessPolicy.js';
 import { DATA_DIR } from './paths.js';
+import { getGitChanges, getGitSummary } from './gitInfo.js';
 
 import {
   setPermissionNotifier,
@@ -35,13 +36,25 @@ import {
 
 import {
   getClaudeAuthStatus,
-  executeTask,
   cancelActiveTask,
   isTaskActive,
   getAppMode,
   validateApiKey,
-  deleteClaudeTranscript
+  deleteClaudeTranscript,
+  reviewKey
 } from './claudeRunner.js';
+
+import {
+  getOrchestrationConfig,
+  setOrchestrationConfig,
+  forgetUserOrchestration,
+  recommendRoles,
+  resolveReviewer,
+  createReviewController,
+  reviewerPermissionPolicy,
+  autoFixPrompt,
+  EDIT_TOOLS
+} from './orchestrator.js';
 
 import {
   getAvailableModels,
@@ -91,6 +104,8 @@ import {
   setClaudeSessionId,
   getProviderSessionId,
   setProviderSessionId,
+  getReviewerSessionId,
+  setReviewerSessionId,
   deleteSession,
   assignLegacyOwner,
   deleteSessionsByOwner
@@ -389,7 +404,7 @@ app.patch('/api/users/:username', requireAuth, requireAdmin, (req, res) => {
 
 app.delete('/api/users/:username', requireAuth, requireAdmin, (req, res) => {
   const { username } = req.params;
-  cancelActiveTask(username);
+  cancelOwnerTask(username);
   if (!deleteUser(username)) {
     return res.status(404).json({ success: false, error: 'Usuario no encontrado' });
   }
@@ -401,6 +416,7 @@ app.delete('/api/users/:username', requireAuth, requireAdmin, (req, res) => {
   forgetUserWorkspace(username);
   forgetUserUsage(username);
   forgetUserPush(username);
+  forgetUserOrchestration(username);
   res.json({ success: true, users: usersWithUsage() });
 });
 
@@ -550,6 +566,7 @@ app.get('/api/sessions', requireAuth, (req, res) => {
 app.post('/api/sessions', requireAuth, (req, res) => {
   const { title } = req.body || {};
   const session = createSession(title, getCurrentWorkspace(req.user), { owner: req.user.username });
+  notifySessionsChanged(req.user.username);
   res.json({ success: true, session });
 });
 
@@ -593,6 +610,7 @@ app.delete('/api/sessions/:id', requireAuth, (req, res) => {
   if (removed && removed.incognito && removed.claudeSessionId) {
     deleteClaudeTranscript(removed.claudeSessionId);
   }
+  notifySessionsChanged(req.user.username);
   res.json({ success: !!removed });
 });
 
@@ -604,6 +622,26 @@ app.get('/api/workspace', requireAuth, (req, res) => {
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
+});
+
+// Cambios sin guardar de una carpeta (panel de cambios de la app de escritorio)
+function gitTarget(req, res) {
+  const dir = String(req.query.workspace || getCurrentWorkspace(req.user));
+  if (!isPathAllowed(req.user, dir)) {
+    res.status(403).json({ success: false, error: 'No tienes acceso a esa carpeta.' });
+    return null;
+  }
+  return dir;
+}
+
+app.get('/api/git/changes', requireAuth, async (req, res) => {
+  const dir = gitTarget(req, res);
+  if (dir) res.json({ success: true, ...(await getGitChanges(dir)) });
+});
+
+app.get('/api/git/summary', requireAuth, async (req, res) => {
+  const dir = gitTarget(req, res);
+  if (dir) res.json({ success: true, ...(await getGitSummary(dir)) });
 });
 
 app.post('/api/workspace', requireAuth, (req, res) => {
@@ -632,10 +670,397 @@ app.get('/api/quick-locations', requireAuth, (req, res) => {
 });
 
 app.post('/api/cancel', requireAuth, (req, res) => {
-  const result = cancelActiveTask(req.user.username);
+  const result = cancelOwnerTask(req.user.username);
   sendToUser(req.user.username, { type: 'task_canceled', result });
   res.json({ success: true, ...result });
 });
+
+// --------------------------------------------------------------------------
+// Orquestador: ajustes por usuario (iguales en todos sus dispositivos)
+// --------------------------------------------------------------------------
+function orchestrationView(user) {
+  const config = getOrchestrationConfig(user.username);
+  const models = catalog(getAvailableModels());
+  const providers = getProvidersStatus();
+  return {
+    config,
+    recommended: recommendRoles(models, providers),
+    reviewer: resolveReviewer(config, models, providers, providerOf),
+    providers
+  };
+}
+
+app.get('/api/orchestration', requireAuth, (req, res) => {
+  res.json({ success: true, ...orchestrationView(req.user) });
+});
+
+app.put('/api/orchestration', requireAuth, (req, res) => {
+  setOrchestrationConfig(req.user.username, req.body || {});
+  const view = orchestrationView(req.user);
+  sendToUser(req.user.username, { type: 'orchestration_updated', ...view });
+  res.json({ success: true, ...view });
+});
+
+// Cancelar la tarea del usuario: el desarrollador, el revisor y lo que quedara por hacer
+function cancelOwnerTask(owner) {
+  liveTasks.get(owner)?.controller?.cancel();
+  const result = cancelActiveTask(owner);
+  liveTasks.delete(owner);
+  return result;
+}
+
+const notifySessionsChanged = (owner) => sendToUser(owner, { type: 'sessions_changed' });
+
+// --------------------------------------------------------------------------
+// Un turno de trabajo: el modelo elegido desarrolla y, si el orquestador está activo,
+// otro modelo lo va revisando (durante la tarea y al terminar). Con «corregir solo», lo que
+// señale el revisor vuelve al desarrollador como un turno nuevo, hasta `maxRounds` rondas.
+// --------------------------------------------------------------------------
+function startTurn(user, params) {
+  const owner = user.username;
+  const { prompt, workspace, sessionId, permissionMode, model, apiKey, attachments, effort, outputStyle, customInstructions, incognito } = params;
+  const origin = params.origin || 'user';
+  const round = params.round || 0;
+  const targetWs = workspace || getCurrentWorkspace(user);
+  const attachmentList = Array.isArray(attachments) ? attachments : [];
+  const mode = permissionMode || 'acceptEdits';
+  const usingOwnKey = getAppMode() === 'Client' || !!(apiKey && String(apiKey).trim());
+
+  // Comprobaciones antes de crear nada: carpeta, modo y límite mensual
+  const rejection = liveTasks.has(owner)
+    ? 'Ya tienes una tarea en ejecución. Cancélala primero.'
+    : !isPathAllowed(user, targetWs)
+      ? 'No tienes acceso a esa carpeta. Elige una de tus carpetas permitidas.'
+      : isRestricted(user) && !isModeAllowed(user, mode)
+        ? 'Tu usuario no tiene permitido ese modo de ejecución.'
+        : monthlyLimitStatus(user, usingOwnKey)?.reached
+          ? `Has alcanzado tu límite mensual de ${user.monthlyLimitUSD.toFixed(2)} USD. Pídele al administrador que lo amplíe o usa tu propia clave de API.`
+          : null;
+  if (rejection) {
+    sendToUser(owner, {
+      type: 'task_error',
+      sessionId: sessionId || null,
+      message: { role: 'assistant', status: 'error', error: rejection },
+      error: { message: rejection }
+    });
+    return;
+  }
+
+  const modelId = model || getDefaultModelId();
+  const provider = providerOf(modelId);
+  const providerName = PROVIDERS[provider].name;
+
+  // Get or create session
+  let currentSession = sessionId ? getSession(sessionId, owner) : null;
+  if (!currentSession) {
+    currentSession = createSession('Nueva conversación', targetWs, { incognito: !!incognito, owner });
+  }
+
+  const autofix = origin === 'autofix';
+  const userMsg = {
+    id: Date.now().toString(),
+    role: 'user',
+    // En «corregir solo» el chat muestra una línea corta; el desarrollador recibe el informe completo
+    text: autofix ? `Corrigiendo lo que señaló el revisor (ronda ${round} de ${params.maxRounds})` : prompt,
+    ...(autofix ? { kind: 'autofix', round } : {}),
+    // Solo los nombres: el contenido de los adjuntos nunca se guarda
+    attachments: attachmentList.map(a => String(a.name || 'archivo')),
+    workspace: targetWs,
+    timestamp: Date.now()
+  };
+
+  // Lo que este proveedor aún no ha visto del chat (otro modelo respondió entre medias): va como contexto
+  const resumeId = getProviderSessionId(currentSession, provider);
+  const taskPrompt = withChatContext(prompt, currentSession.messages, provider, !!resumeId);
+
+  addMessageToSession(currentSession.id, userMsg);
+  sendToUser(owner, { type: 'user_message', sessionId: currentSession.id, message: userMsg });
+  notifySessionsChanged(owner);
+
+  const assistantMsg = {
+    id: (Date.now() + 1).toString(),
+    role: 'assistant',
+    text: '',
+    thinking: '',
+    tools: [],
+    workspace: targetWs,
+    model: modelId,
+    provider,
+    timestamp: Date.now(),
+    status: 'running'
+  };
+
+  // Revisor del orquestador (null si está desactivado o no hay con qué revisar)
+  const orch = getOrchestrationConfig(owner);
+  const reviewer = orch.enabled ? resolveReviewer(orch, catalog(getAvailableModels()), getProvidersStatus(), providerOf) : null;
+  const reviews = [];
+  if (reviewer) assistantMsg.reviews = reviews;
+
+  const live = { sessionId: currentSession.id, seq: 0, message: assistantMsg, provider, controller: null };
+  sendToUser(owner, { type: 'assistant_start', sessionId: currentSession.id, message: assistantMsg });
+  liveTasks.set(owner, live);
+  const endLiveTask = () => {
+    if (liveTasks.get(owner)?.message === assistantMsg) liveTasks.delete(owner);
+  };
+
+  // Puente de permisos de esta tarea: las rutas fuera de las carpetas del usuario se deniegan sin preguntar
+  const permissionSecret = registerTask({
+    owner,
+    chatId: currentSession.id,
+    check: (tool, input) => toolPathViolation(user, tool, input, targetWs)
+  });
+
+  const controller = reviewer
+    ? createReviewController({
+        owner,
+        chatId: currentSession.id,
+        workspace: targetWs,
+        userPrompt: prompt,
+        developerName: modelId,
+        reviewer,
+        live: orch.live,
+        reviews,
+        getResumeId: (p) => getReviewerSessionId(getSession(currentSession.id), p),
+        setResumeId: (p, id) => setReviewerSessionId(currentSession.id, p, id),
+        onUpdate: (review) => sendToUser(owner, {
+          type: 'review_update',
+          sessionId: currentSession.id,
+          messageId: assistantMsg.id,
+          review
+        }),
+        // El revisor solo lee: Claude con una política que aprueba lecturas y deniega el resto; los demás, en solo lectura
+        run: (opts) => {
+          const reviewerClaude = reviewer.provider === 'claude';
+          const secret = reviewerClaude
+            ? registerTask({
+                owner,
+                chatId: currentSession.id,
+                check: (tool, input) => toolPathViolation(user, tool, input, targetWs),
+                auto: reviewerPermissionPolicy
+              })
+            : null;
+          const release = () => { if (secret) unregisterTask(secret); };
+          try {
+            return executeWithProvider(reviewer.provider, {
+              ...opts,
+              workspace: targetWs,
+              owner: reviewKey(owner, currentSession.id),
+              restricted: true,
+              permissionMode: reviewerClaude ? 'manual' : 'plan',
+              permissionBridge: secret ? { url: permissionCallbackUrl(), secret } : undefined,
+              apiKey: apiKey || null,
+              onDone: (result) => {
+                release();
+                if (reviewerClaude) {
+                  const cost = summarizeResultCost(result.result);
+                  if (cost) recordUsage(cost, owner, { hostAccount: !usingOwnKey });
+                }
+                opts.onDone(result);
+              },
+              onError: (err) => {
+                release();
+                opts.onError(err);
+              }
+            });
+          } catch (err) {
+            release();
+            throw err;
+          }
+        }
+      })
+    : null;
+  live.controller = controller;
+
+  const fail = (message) => {
+    unregisterTask(permissionSecret);
+    controller?.cancel();
+    endLiveTask();
+    assistantMsg.status = 'error';
+    assistantMsg.error = message;
+  };
+
+  // Cierre de la tarea del desarrollador: espera a la revisión final, guarda el mensaje y, si toca, encadena la corrección
+  const finishTurn = async (result) => {
+    unregisterTask(permissionSecret);
+    // El desarrollador ha terminado: esperar a la revisión final antes de dar la tarea por cerrada
+    let lastReview = null;
+    if (controller) {
+      sendToUser(owner, { type: 'task_phase', sessionId: currentSession.id, phase: 'reviewing' });
+      try {
+        lastReview = await controller.finish();
+      } catch (err) {
+        console.error('Error en la revisión:', err.message);
+      }
+    }
+    const stillLive = liveTasks.get(owner)?.message === assistantMsg;
+    endLiveTask();
+
+    assistantMsg.status = 'completed';
+    if (!assistantMsg.text && result.text) {
+      assistantMsg.text = result.text;
+    }
+    // El resultado final solo contiene el último bloque de texto: usarlo solo si no se recibió nada en streaming
+    if (!assistantMsg.text && result.result && result.result.result) {
+      assistantMsg.text = typeof result.result.result === 'string'
+        ? result.result.result
+        : JSON.stringify(result.result.result, null, 2);
+    }
+    assistantMsg.duration = result.result?.duration_ms || null;
+
+    // Coste de la respuesta según Claude Code (precio de tarifa de la API); ChatGPT y Gemini van por suscripción
+    const cost = provider === 'claude' ? summarizeResultCost(result.result) : null;
+    if (cost) {
+      assistantMsg.cost = cost;
+      recordUsage(cost, owner, { hostAccount: !usingOwnKey });
+    }
+
+    if (result.sessionId) {
+      setProviderSessionId(currentSession.id, provider, result.sessionId);
+    }
+
+    addMessageToSession(currentSession.id, assistantMsg);
+
+    const flagged = lastReview?.verdict === 'CAMBIOS';
+    pushIfAway(owner, {
+      // En incógnito no se muestra nada de la conversación en la pantalla de bloqueo
+      title: currentSession.incognito ? `${providerName} ha terminado` : currentSession.title || `${providerName} ha terminado`,
+      body: currentSession.incognito
+        ? 'Chat incógnito'
+        : `${flagged ? 'El revisor propone cambios. ' : ''}${notificationBody(assistantMsg.text, `${providerName} ha terminado la tarea`)}`,
+      tag: `task-${currentSession.id}`,
+      sessionId: currentSession.id
+    });
+
+    sendToUser(owner, {
+      type: 'task_completed',
+      sessionId: currentSession.id,
+      message: assistantMsg,
+      result
+    });
+    notifySessionsChanged(owner);
+
+    if (!apiKey && provider === 'claude') broadcastPlanLimits();
+
+    // Corregir solo: el informe del revisor vuelve al desarrollador, con un tope de rondas
+    if (stillLive && orch.autoFix && lastReview?.status === 'done' && flagged && round < orch.maxRounds) {
+      startTurn(user, {
+        ...params,
+        prompt: autoFixPrompt(lastReview),
+        sessionId: currentSession.id,
+        attachments: [],
+        workspace: targetWs,
+        origin: 'autofix',
+        round: round + 1,
+        maxRounds: orch.maxRounds
+      });
+    }
+  };
+
+  try {
+    executeWithProvider(provider, {
+      prompt: taskPrompt,
+      workspace: targetWs,
+      sessionId: resumeId,
+      owner,
+      restricted: isRestricted(user),
+      permissionMode: mode,
+      permissionBridge: { url: permissionCallbackUrl(), secret: permissionSecret },
+      model: model || null,
+      apiKey: apiKey || null,
+      attachments: attachmentList,
+      effort: effort || null,
+      outputStyle: outputStyle || null,
+      customInstructions: [getProfilePrompt(owner), typeof customInstructions === 'string' ? customInstructions : '']
+        .filter(Boolean).join('\n\n') || null,
+      onEvent: (event) => {
+        // Id de la sesión del proveedor, por si el servidor se apaga antes de terminar
+        if (event.sessionId && liveTasks.get(owner)?.message === assistantMsg) live.providerSessionId = event.sessionId;
+        if (event.type === 'text_delta') {
+          assistantMsg.text += event.text;
+          sendTaskEvent(owner, { type: 'stream_delta', sessionId: currentSession.id, text: event.text });
+        } else if (event.type === 'thinking_delta') {
+          assistantMsg.thinking += event.thinking;
+          sendTaskEvent(owner, { type: 'stream_thinking', sessionId: currentSession.id, thinking: event.thinking });
+        } else if (event.type === 'text_raw') {
+          assistantMsg.text += event.text + '\n';
+          sendTaskEvent(owner, { type: 'stream_raw', sessionId: currentSession.id, text: event.text });
+        } else if (event.type === 'tool_use') {
+          assistantMsg.tools.push({
+            id: event.id,
+            tool: event.tool,
+            input: event.input,
+            subagent: !!event.subagent,
+            status: 'running',
+            time: Date.now()
+          });
+          sendTaskEvent(owner, {
+            type: 'tool_use',
+            sessionId: currentSession.id,
+            id: event.id,
+            tool: event.tool,
+            input: event.input,
+            subagent: !!event.subagent
+          });
+        } else if (event.type === 'tool_result') {
+          const toolEntry = assistantMsg.tools.find(t => t.id === event.id);
+          if (toolEntry) toolEntry.status = event.isError ? 'error' : 'done';
+          // Cada edición terminada con éxito le avisa al revisor
+          if (controller && toolEntry && !toolEntry.subagent && !event.isError && EDIT_TOOLS.has(toolEntry.tool)) {
+            controller.noteEdit(toolEntry.input?.file_path || toolEntry.input?.notebook_path);
+          }
+          sendTaskEvent(owner, {
+            type: 'tool_result',
+            sessionId: currentSession.id,
+            id: event.id,
+            isError: event.isError,
+            content: event.content
+          });
+        }
+      },
+      onDone: (result) => {
+        finishTurn(result).catch((err) => {
+          console.error('Error cerrando la tarea:', err);
+          endLiveTask();
+          sendToUser(owner, {
+            type: 'task_error',
+            sessionId: currentSession.id,
+            message: { ...assistantMsg, status: 'error', error: err.message },
+            error: { message: err.message }
+          });
+        });
+      },
+      onError: (err) => {
+        fail(err.message || `Error en la ejecución de ${PROVIDERS[provider].cli}`);
+        if (err.text) assistantMsg.text = err.text;
+
+        addMessageToSession(currentSession.id, assistantMsg);
+
+        pushIfAway(owner, {
+          title: 'La tarea ha fallado',
+          body: currentSession.incognito ? 'Chat incógnito' : notificationBody(assistantMsg.error, currentSession.title),
+          tag: `task-${currentSession.id}`,
+          sessionId: currentSession.id
+        });
+
+        sendToUser(owner, {
+          type: 'task_error',
+          sessionId: currentSession.id,
+          message: assistantMsg,
+          error: err
+        });
+        notifySessionsChanged(owner);
+      }
+    });
+  } catch (err) {
+    fail(err.message);
+    sendToUser(owner, {
+      type: 'task_error',
+      sessionId: currentSession.id,
+      message: assistantMsg,
+      error: { message: err.message }
+    });
+  }
+}
 
 // --------------------------------------------------------------------------
 // WebSocket Server
@@ -691,220 +1116,7 @@ wss.on('connection', (ws) => {
       }
 
       if (data.type === 'run_task') {
-        const { prompt, workspace, sessionId, permissionMode, model, apiKey, attachments, effort, outputStyle, customInstructions, incognito } = data;
-        const targetWs = workspace || getCurrentWorkspace(user);
-        const attachmentList = Array.isArray(attachments) ? attachments : [];
-        const mode = permissionMode || 'acceptEdits';
-        const usingOwnKey = getAppMode() === 'Client' || !!(apiKey && String(apiKey).trim());
-
-        // Comprobaciones antes de crear nada: carpeta, modo y límite mensual
-        const rejection = !isPathAllowed(user, targetWs)
-          ? 'No tienes acceso a esa carpeta. Elige una de tus carpetas permitidas.'
-          : isRestricted(user) && !isModeAllowed(user, mode)
-            ? 'Tu usuario no tiene permitido ese modo de ejecución.'
-            : monthlyLimitStatus(user, usingOwnKey)?.reached
-              ? `Has alcanzado tu límite mensual de ${user.monthlyLimitUSD.toFixed(2)} USD. Pídele al administrador que lo amplíe o usa tu propia clave de API.`
-              : null;
-        if (rejection) {
-          sendToUser(owner, {
-            type: 'task_error',
-            sessionId: sessionId || null,
-            message: { role: 'assistant', status: 'error', error: rejection },
-            error: { message: rejection }
-          });
-          return;
-        }
-
-        const provider = providerOf(model || getDefaultModelId());
-        const providerName = PROVIDERS[provider].name;
-
-        // Get or create session
-        let currentSession = sessionId ? getSession(sessionId, owner) : null;
-        if (!currentSession) {
-          currentSession = createSession('Nueva conversación', targetWs, { incognito: !!incognito, owner });
-        }
-
-        const userMsg = {
-          id: Date.now().toString(),
-          role: 'user',
-          text: prompt,
-          // Solo los nombres: el contenido de los adjuntos nunca se guarda
-          attachments: attachmentList.map(a => String(a.name || 'archivo')),
-          workspace: targetWs,
-          timestamp: Date.now()
-        };
-
-        // Lo que este proveedor aún no ha visto del chat (otro modelo respondió entre medias): va como contexto
-        const resumeId = getProviderSessionId(currentSession, provider);
-        const taskPrompt = withChatContext(prompt, currentSession.messages, provider, !!resumeId);
-
-        addMessageToSession(currentSession.id, userMsg);
-        sendToUser(owner, { type: 'user_message', sessionId: currentSession.id, message: userMsg });
-
-        let assistantMsg = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          text: '',
-          thinking: '',
-          tools: [],
-          workspace: targetWs,
-          model: model || getDefaultModelId(),
-          provider,
-          timestamp: Date.now(),
-          status: 'running'
-        };
-        sendToUser(owner, { type: 'assistant_start', sessionId: currentSession.id, message: assistantMsg });
-        liveTasks.set(owner, { sessionId: currentSession.id, seq: 0, message: assistantMsg, provider });
-        const endLiveTask = () => {
-          if (liveTasks.get(owner)?.message === assistantMsg) liveTasks.delete(owner);
-        };
-
-        // Puente de permisos de esta tarea: las rutas fuera de las carpetas del usuario se deniegan sin preguntar
-        const permissionSecret = registerTask({
-          owner,
-          chatId: currentSession.id,
-          check: (tool, input) => toolPathViolation(user, tool, input, targetWs)
-        });
-
-        try {
-          executeWithProvider(provider, {
-            prompt: taskPrompt,
-            workspace: targetWs,
-            sessionId: resumeId,
-            owner,
-            restricted: isRestricted(user),
-            permissionMode: mode,
-            permissionBridge: { url: permissionCallbackUrl(), secret: permissionSecret },
-            model: model || null,
-            apiKey: apiKey || null,
-            attachments: attachmentList,
-            effort: effort || null,
-            outputStyle: outputStyle || null,
-            customInstructions: [getProfilePrompt(owner), typeof customInstructions === 'string' ? customInstructions : '']
-              .filter(Boolean).join('\n\n') || null,
-            onEvent: (event) => {
-              // Id de la sesión del proveedor, por si el servidor se apaga antes de terminar
-              const live = liveTasks.get(owner);
-              if (event.sessionId && live?.message === assistantMsg) live.providerSessionId = event.sessionId;
-              if (event.type === 'text_delta') {
-                assistantMsg.text += event.text;
-                sendTaskEvent(owner, { type: 'stream_delta', sessionId: currentSession.id, text: event.text });
-              } else if (event.type === 'thinking_delta') {
-                assistantMsg.thinking += event.thinking;
-                sendTaskEvent(owner, { type: 'stream_thinking', sessionId: currentSession.id, thinking: event.thinking });
-              } else if (event.type === 'text_raw') {
-                assistantMsg.text += event.text + '\n';
-                sendTaskEvent(owner, { type: 'stream_raw', sessionId: currentSession.id, text: event.text });
-              } else if (event.type === 'tool_use') {
-                assistantMsg.tools.push({
-                  id: event.id,
-                  tool: event.tool,
-                  input: event.input,
-                  subagent: !!event.subagent,
-                  status: 'running',
-                  time: Date.now()
-                });
-                sendTaskEvent(owner, {
-                  type: 'tool_use',
-                  sessionId: currentSession.id,
-                  id: event.id,
-                  tool: event.tool,
-                  input: event.input,
-                  subagent: !!event.subagent
-                });
-              } else if (event.type === 'tool_result') {
-                const toolEntry = assistantMsg.tools.find(t => t.id === event.id);
-                if (toolEntry) toolEntry.status = event.isError ? 'error' : 'done';
-                sendTaskEvent(owner, {
-                  type: 'tool_result',
-                  sessionId: currentSession.id,
-                  id: event.id,
-                  isError: event.isError,
-                  content: event.content
-                });
-              }
-            },
-            onDone: (result) => {
-              unregisterTask(permissionSecret);
-              endLiveTask();
-              assistantMsg.status = 'completed';
-              if (!assistantMsg.text && result.text) {
-                assistantMsg.text = result.text;
-              }
-              // El resultado final solo contiene el último bloque de texto: usarlo solo si no se recibió nada en streaming
-              if (!assistantMsg.text && result.result && result.result.result) {
-                assistantMsg.text = typeof result.result.result === 'string'
-                  ? result.result.result
-                  : JSON.stringify(result.result.result, null, 2);
-              }
-              assistantMsg.duration = result.result?.duration_ms || null;
-
-              // Coste de la respuesta según Claude Code (precio de tarifa de la API); ChatGPT y Gemini van por suscripción
-              const cost = provider === 'claude' ? summarizeResultCost(result.result) : null;
-              if (cost) {
-                assistantMsg.cost = cost;
-                recordUsage(cost, owner, { hostAccount: !usingOwnKey });
-              }
-
-              if (result.sessionId) {
-                setProviderSessionId(currentSession.id, provider, result.sessionId);
-              }
-
-              addMessageToSession(currentSession.id, assistantMsg);
-
-              pushIfAway(owner, {
-                // En incógnito no se muestra nada de la conversación en la pantalla de bloqueo
-                title: currentSession.incognito ? `${providerName} ha terminado` : currentSession.title || `${providerName} ha terminado`,
-                body: currentSession.incognito ? 'Chat incógnito' : notificationBody(assistantMsg.text, `${providerName} ha terminado la tarea`),
-                tag: `task-${currentSession.id}`,
-                sessionId: currentSession.id
-              });
-
-              sendToUser(owner, {
-                type: 'task_completed',
-                sessionId: currentSession.id,
-                message: assistantMsg,
-                result
-              });
-
-              if (!apiKey && provider === 'claude') broadcastPlanLimits();
-            },
-            onError: (err) => {
-              unregisterTask(permissionSecret);
-              endLiveTask();
-              assistantMsg.status = 'error';
-              assistantMsg.error = err.message || `Error en la ejecución de ${PROVIDERS[provider].cli}`;
-              if (err.text) assistantMsg.text = err.text;
-
-              addMessageToSession(currentSession.id, assistantMsg);
-
-              pushIfAway(owner, {
-                title: 'La tarea ha fallado',
-                body: currentSession.incognito ? 'Chat incógnito' : notificationBody(assistantMsg.error, currentSession.title),
-                tag: `task-${currentSession.id}`,
-                sessionId: currentSession.id
-              });
-
-              sendToUser(owner, {
-                type: 'task_error',
-                sessionId: currentSession.id,
-                message: assistantMsg,
-                error: err
-              });
-            }
-          });
-        } catch (err) {
-          unregisterTask(permissionSecret);
-          endLiveTask();
-          assistantMsg.status = 'error';
-          assistantMsg.error = err.message;
-          sendToUser(owner, {
-            type: 'task_error',
-            sessionId: currentSession.id,
-            message: assistantMsg,
-            error: { message: err.message }
-          });
-        }
+        startTurn(user, data);
       } else if (data.type === 'permission_response') {
         answerPermission(String(data.id || ''), owner, {
           allow: data.allow === true,
@@ -912,9 +1124,7 @@ wss.on('connection', (ws) => {
           message: data.message
         });
       } else if (data.type === 'cancel_task') {
-        const res = cancelActiveTask(owner);
-        liveTasks.delete(owner);
-        sendToUser(owner, { type: 'task_canceled', result: res });
+        sendToUser(owner, { type: 'task_canceled', result: cancelOwnerTask(owner) });
       }
     } catch (e) {
       console.error('WebSocket message error:', e.message);
@@ -994,6 +1204,12 @@ function saveLiveTasksOnShutdown(signal) {
     msg.status = 'error';
     msg.error = 'El servidor se reinició antes de que terminara la respuesta.';
     msg.tools.forEach(t => { if (t.status === 'running') t.status = 'error'; });
+    live.controller?.cancel();
+    try {
+      cancelActiveTask(owner);
+    } catch {
+      // el proceso ya había terminado
+    }
     try {
       if (live.providerSessionId) setProviderSessionId(live.sessionId, live.provider, live.providerSessionId);
       addMessageToSession(live.sessionId, msg);
