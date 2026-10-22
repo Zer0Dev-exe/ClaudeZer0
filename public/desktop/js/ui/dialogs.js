@@ -54,6 +54,7 @@ export function openPalette() {
     { t: 'Orquestador de agentes', ic: 'orch', run: () => openOrchestrator() },
     { t: 'Ajustes', ic: 'settings', run: () => openSettings() },
     { t: 'Uso y gasto', ic: 'chart', run: () => openUsage() },
+    ...(state.user?.role === 'admin' ? [{ t: 'Gestionar usuarios', ic: 'shield', run: () => openUsers() }] : []),
     { t: state.ui.panel.open ? 'Ocultar panel de cambios' : 'Mostrar panel de cambios', ic: 'panel-right', run: () => setUi({ panel: { ...state.ui.panel, open: !state.ui.panel.open } }) }
   ];
 
@@ -237,6 +238,9 @@ export async function openSettings() {
         acct('codex', 'ChatGPT (Codex)', !!state.providers.codex?.loggedIn),
         acct('gemini', 'Gemini', !!state.providers.gemini?.loggedIn)),
       notif, verRow,
+      state.user?.role === 'admin' ? h('div', { class: 'field' }, h('span', { class: 'label' }, 'Usuarios'),
+        h('div', { class: 'acct' }, icon('shield'), h('div', { class: 'grow' }, 'Gestionar usuarios', h('small', null, 'Crear, editar y eliminar cuentas')),
+          h('button', { class: 'btn-sm', type: 'button', onclick: () => { dlg.close(); openUsers(); } }, 'Abrir'))) : null,
       h('div', { class: 'field' }, h('span', { class: 'label' }, 'Servidor'),
         h('div', { class: 'hint' }, `Conectado a ${location.origin}. Tus conversaciones viven ahí y son las mismas en la web, el móvil y esta app.`),
         desktop?.changeServer ? h('div', null, h('button', { class: 'btn-sm', type: 'button', onclick: () => desktop.changeServer() }, 'Cambiar de servidor')) : null)
@@ -246,6 +250,104 @@ export async function openSettings() {
       h('button', { class: 'btn-sm btn-primary', type: 'button', onclick: () => dlg.close() }, 'Listo')
     ]
   });
+}
+
+// --------------------------------------------------------------------------
+// Usuarios (solo administrador)
+// --------------------------------------------------------------------------
+const USER_MODES = [['manual', 'Manual'], ['acceptEdits', 'Aceptar ediciones'], ['plan', 'Plan'], ['auto', 'Auto']];
+
+export function openUsers() {
+  const body = h('div', null);
+  const dlg = openDialog({ title: 'Usuarios', width: 560, body });
+  let users = [];
+
+  const call = async (path, method, payload) => {
+    const data = await api(path, { method, body: payload });
+    if (!data.success) throw new Error(data.error || 'No se pudo completar la acción');
+    users = data.users || users;
+    return data;
+  };
+
+  const showList = () => {
+    clear(body);
+    body.append(h('div', { style: { display: 'flex', justifyContent: 'flex-end' } },
+      h('button', { class: 'btn-sm btn-primary', type: 'button', onclick: () => showForm(null) }, icon('plus'), 'Nuevo usuario')));
+    for (const u of users) {
+      const admin = u.role === 'admin';
+      const detail = admin ? 'Administrador · acceso total'
+        : `${(u.allowedModes || []).length} modos · ${(u.roots || []).join(', ')}${u.monthlyLimitUSD != null ? ` · límite $${u.monthlyLimitUSD}` : ''}`;
+      body.append(h('div', { class: 'acct' }, icon(admin ? 'shield' : 'bot'),
+        h('div', { class: 'grow' }, u.username, h('small', null, detail)),
+        admin ? h('span', { class: 'badge ok' }, 'Admin') : [
+          h('button', { class: 'icon-btn', type: 'button', title: 'Editar', onclick: () => showForm(u) }, icon('pencil')),
+          h('button', { class: 'icon-btn', type: 'button', title: 'Eliminar', onclick: () => remove(u) }, icon('trash'))
+        ]));
+    }
+  };
+
+  const remove = async (u) => {
+    if (!confirm(`¿Eliminar al usuario "${u.username}" y todas sus conversaciones?`)) return;
+    try { await call(`/api/users/${encodeURIComponent(u.username)}`, 'DELETE'); toast('Usuario eliminado'); showList(); }
+    catch (e) { toast(e.message, 'error'); }
+  };
+
+  const showForm = (u) => {
+    const isNew = !u;
+    const name = h('input', { class: 'input', type: 'text', value: u?.username || '', disabled: !isNew, autocomplete: 'off' });
+    const pass = h('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: isNew ? 'Mínimo 8 caracteres' : 'Déjalo vacío para no cambiarla' });
+    const roots = h('textarea', { class: 'input mono', rows: 3, style: { height: 'auto', padding: '8px 12px' }, placeholder: '/ruta/a/la/carpeta (una por línea)' });
+    roots.value = (u?.roots || []).join('\n');
+    const limit = h('input', { class: 'input', type: 'number', min: 0, step: 0.01, value: u?.monthlyLimitUSD ?? '', placeholder: 'Sin límite' });
+    const allowed = u?.allowedModes || ['manual', 'acceptEdits', 'plan'];
+    const modes = USER_MODES.map(([id, label]) => ({ id, box: h('input', { type: 'checkbox', checked: allowed.includes(id) }), label }));
+    const error = h('div', { class: 'status-box error', hidden: true });
+    const save = h('button', { class: 'btn-sm btn-primary', type: 'button' }, isNew ? 'Crear usuario' : 'Guardar');
+
+    save.addEventListener('click', async () => {
+      error.hidden = true;
+      save.disabled = true;
+      const payload = {
+        password: pass.value || undefined,
+        roots: roots.value.split('\n').map(r => r.trim()).filter(Boolean),
+        allowedModes: modes.filter(m => m.box.checked).map(m => m.id),
+        monthlyLimitUSD: limit.value === '' ? null : Number(limit.value)
+      };
+      try {
+        if (isNew) await call('/api/users', 'POST', { ...payload, username: name.value.trim() });
+        else await call(`/api/users/${encodeURIComponent(u.username)}`, 'PATCH', payload);
+        toast(isNew ? 'Usuario creado' : 'Usuario actualizado');
+        showList();
+      } catch (e) {
+        error.hidden = false;
+        error.textContent = e.message;
+        save.disabled = false;
+      }
+    });
+
+    clear(body);
+    body.append(
+      h('div', { class: 'field' }, h('label', null, 'Usuario'), name),
+      h('div', { class: 'field' }, h('label', null, isNew ? 'Contraseña inicial' : 'Nueva contraseña'), pass,
+        h('div', { class: 'hint' }, 'El usuario tendrá que cambiarla al entrar.')),
+      h('div', { class: 'field' }, h('label', null, 'Carpetas permitidas'), roots),
+      h('div', { class: 'field' }, h('span', { class: 'label' }, 'Modos de ejecución'),
+        h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '12px' } },
+          modes.map(m => h('label', { style: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' } }, m.box, m.label)))),
+      h('div', { class: 'field' }, h('label', null, 'Límite mensual (USD)'), limit),
+      error,
+      h('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px' } },
+        h('button', { class: 'btn-sm', type: 'button', onclick: showList }, 'Volver'), save));
+    (isNew ? name : pass).focus();
+  };
+
+  body.append(h('div', { class: 'hint' }, 'Cargando…'));
+  api('/api/users').then(data => {
+    if (!data.success) throw new Error(data.error);
+    users = data.users;
+    showList();
+  }).catch(e => { clear(body); body.append(h('div', { class: 'status-box error' }, e.message || 'No se pudieron cargar los usuarios')); });
+  return dlg;
 }
 
 // --------------------------------------------------------------------------
