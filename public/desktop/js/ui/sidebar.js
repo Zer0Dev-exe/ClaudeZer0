@@ -8,7 +8,7 @@ const DAY = 24 * 60 * 60 * 1000;
 export function mountSidebar(root) {
   const render = () => {
     clear(root);
-    root.append(head(), top(), list(), updatePill(), foot());
+    root.append(...[head(), top(), list(), updatePill(), foot()].filter(Boolean));
   };
   for (const ev of ['sessions', 'thread', 'git', 'conn', 'perms', 'running', 'orch', 'update']) on(ev, render);
   on('ui', () => { /* el filtro y la sección «resueltos» cambian la lista */ render(); });
