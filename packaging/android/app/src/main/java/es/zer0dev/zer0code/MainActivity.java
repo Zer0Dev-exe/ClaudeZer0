@@ -34,7 +34,6 @@ import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -90,23 +89,32 @@ public class MainActivity extends Activity {
         destroyWebView();
         root.removeAllViews();
 
+        // Misma tarjeta que el login de la web: logo Z0, título, campo con etiqueta y botón oscuro
         LinearLayout column = new LinearLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
         column.setGravity(Gravity.CENTER_HORIZONTAL);
-        column.setPadding(dp(28), dp(48), dp(28), dp(28));
+        column.setPadding(dp(24), dp(24), dp(24), dp(24));
+        column.setBackground(card());
+        column.setElevation(dp(6));
 
-        ImageView icon = new ImageView(this);
-        icon.setImageResource(R.drawable.ic_launcher_foreground);
-        column.addView(icon, new LinearLayout.LayoutParams(dp(112), dp(112)));
+        TextView logo = text("Z0", 22, R.color.bg);
+        logo.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        logo.setGravity(Gravity.CENTER);
+        logo.setBackground(rounded(R.color.text, dp(14), false));
+        column.addView(logo, new LinearLayout.LayoutParams(dp(56), dp(56)));
 
-        TextView title = text("Zer0Code", 30, R.color.text);
-        title.setTypeface(Typeface.SERIF);
+        TextView title = text("Zer0Code", 28, R.color.text);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setGravity(Gravity.CENTER);
-        column.addView(title, matchWidth(0));
+        column.addView(title, matchWidth(dp(20)));
 
-        TextView intro = text("Escribe la dirección de tu servidor de Zer0Code. La ves al arrancarlo, por ejemplo https://mi-servidor.tailnet.ts.net o http://192.168.1.50:5050.", 15, R.color.muted);
+        TextView intro = text("Introduce la dirección de tu servidor de Zer0Code para acceder desde este dispositivo.", 14, R.color.muted);
         intro.setGravity(Gravity.CENTER);
-        column.addView(intro, matchWidth(dp(10)));
+        column.addView(intro, matchWidth(dp(8)));
+
+        TextView label = text("Servidor", 13, R.color.text);
+        label.setTypeface(Typeface.DEFAULT_BOLD);
+        column.addView(label, matchWidth(dp(24)));
 
         EditText input = new EditText(this);
         input.setSingleLine(true);
@@ -115,24 +123,29 @@ public class MainActivity extends Activity {
         input.setHint("https://…");
         input.setTextColor(getColor(R.color.text));
         input.setHintTextColor(getColor(R.color.muted));
-        input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        input.setPadding(dp(16), dp(14), dp(16), dp(14));
-        input.setBackground(rounded(R.color.field, dp(14), true));
+        input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        input.setPadding(dp(14), dp(12), dp(14), dp(12));
+        input.setBackground(rounded(R.color.field, dp(12), true));
         String last = prefs().getString(KEY_SERVER, null);
         if (last != null) input.setText(last);
-        column.addView(input, matchWidth(dp(28)));
+        column.addView(input, matchWidth(dp(8)));
+
+        TextView status = text(message == null ? "" : message, 13, R.color.error);
+        status.setGravity(Gravity.CENTER);
+        column.addView(status, matchWidth(dp(12)));
 
         Button connect = new Button(this);
         connect.setText("Conectar");
         connect.setAllCaps(false);
-        connect.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-        connect.setTextColor(0xFFFFFFFF);
-        connect.setBackground(rounded(R.color.accent, dp(14), false));
-        column.addView(connect, matchWidth(dp(14)));
+        connect.setTypeface(Typeface.DEFAULT_BOLD);
+        connect.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        connect.setTextColor(getColor(R.color.accent_text));
+        connect.setBackground(rounded(R.color.accent, dp(12), false));
+        column.addView(connect, buttonParams(dp(12)));
 
-        TextView status = text(message == null ? "" : message, 14, R.color.error);
-        status.setGravity(Gravity.CENTER);
-        column.addView(status, matchWidth(dp(16)));
+        TextView hint = text("La dirección aparece al arrancar el servidor, por ejemplo https://mi-servidor.tailnet.ts.net o http://192.168.1.50:5050.", 12, R.color.muted);
+        hint.setGravity(Gravity.CENTER);
+        column.addView(hint, matchWidth(dp(16)));
 
         View.OnClickListener go = v -> {
             String url = normalize(input.getText().toString());
@@ -164,9 +177,13 @@ public class MainActivity extends Activity {
             return true;
         });
 
+        // La tarjeta va centrada sobre el fondo de la página, con margen a los lados
+        FrameLayout page = new FrameLayout(this);
+        page.setPadding(dp(20), dp(20), dp(20), dp(20));
+        page.addView(column, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.addView(column);
+        scroll.addView(page);
         root.addView(scroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
@@ -254,7 +271,7 @@ public class MainActivity extends Activity {
         column.setClickable(true);
 
         TextView title = text("No se puede abrir Zer0Code", 22, R.color.text);
-        title.setTypeface(Typeface.SERIF);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setGravity(Gravity.CENTER);
         column.addView(title, matchWidth(0));
 
@@ -265,7 +282,7 @@ public class MainActivity extends Activity {
         Button retry = new Button(this);
         retry.setText("Reintentar");
         retry.setAllCaps(false);
-        retry.setTextColor(0xFFFFFFFF);
+        retry.setTextColor(getColor(R.color.accent_text));
         retry.setBackground(rounded(R.color.accent, dp(14), false));
         retry.setOnClickListener(v -> {
             root.removeView(errorView);
@@ -435,11 +452,25 @@ public class MainActivity extends Activity {
         return params;
     }
 
+    private LinearLayout.LayoutParams buttonParams(int topMargin) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
+        params.topMargin = topMargin;
+        return params;
+    }
+
+    private GradientDrawable card() {
+        GradientDrawable shape = new GradientDrawable();
+        shape.setColor(getColor(R.color.card));
+        shape.setCornerRadius(dp(24));
+        shape.setStroke(dp(1), getColor(R.color.border));
+        return shape;
+    }
+
     private GradientDrawable rounded(int colorRes, int radius, boolean border) {
         GradientDrawable shape = new GradientDrawable();
         shape.setColor(getColor(colorRes));
         shape.setCornerRadius(radius);
-        if (border) shape.setStroke(dp(1), getColor(R.color.muted) & 0x40FFFFFF);
+        if (border) shape.setStroke(dp(1), getColor(R.color.border));
         return shape;
     }
 }

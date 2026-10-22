@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg">#FAF9F5</color>
-    <color name="text">#1F1E1B</color>
-    <color name="muted">#6B6862</color>
-    <color name="field">#FFFFFF</color>
-    <color name="accent">#D97757</color>
-    <color name="error">#B4442C</color>
+    <!-- Misma paleta que la web (public/css/style.css): tema claro y acento grafito -->
+    <color name="bg">#FAFAFA</color>
+    <color name="card">#FFFFFF</color>
+    <color name="text">#09090B</color>
+    <color name="muted">#71717A</color>
+    <color name="field">#FAFAFA</color>
+    <color name="border">#E4E4E7</color>
+    <color name="accent">#09090B</color>
+    <color name="accent_text">#FFFFFF</color>
+    <color name="error">#DC3C3C</color>
     <color name="icon_bg">#141413</color>
 </resources>

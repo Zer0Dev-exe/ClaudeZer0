@@ -1,5 +1,5 @@
 ; Instalador de Zer0Code para Windows (Inno Setup 6)
-; Compilar: iscc /DAppVersion=1.3.2 /DStageDir=<carpeta de stage-app.sh> /DOutputDir=<salida> Zer0Code.iss
+; Compilar: iscc /DAppVersion=1.3.3 /DStageDir=<carpeta de stage-app.sh> /DOutputDir=<salida> Zer0Code.iss
 ; Se instala para el usuario actual (sin permisos de administrador) y los datos quedan en %APPDATA%\Zer0Code.
 
 #ifndef AppVersion

@@ -1,6 +1,6 @@
 {
   "name": "zer0code",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "Panel web y móvil directo para Claude Code",
   "main": "server/index.js",
   "type": "module",
