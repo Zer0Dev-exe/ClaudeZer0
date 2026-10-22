@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="zer0code-banner.svg" alt="Zer0Code: agentes en tu escritorio, navegador y móvil" width="100%">
+  <img src="zer0code-brand-banner.svg" alt="Zer0Code: agentes en tu escritorio, navegador y móvil" width="100%">
 </p>
 
 <h3 align="center">Claude desarrolla, ChatGPT revisa. En tu escritorio, tu navegador y tu móvil.</h3>
@@ -19,13 +19,13 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/hero-zer0code.jpg" alt="Zer0Code en el escritorio y en el móvil: una conversación con herramientas y una petición de permiso" width="100%">
+  <img src="docs/screenshots/app-overview.png" alt="Capturas actuales de Zer0Code: app de escritorio y pantalla de inicio móvil con el icono ZØ" width="100%">
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/desktop.jpg" alt="App de escritorio: hilos por proyecto, Claude desarrollando, la revisión de GPT-5.5 con cambios propuestos y el diff a la derecha" width="100%">
+  <img src="docs/screenshots/app-desktop-dark.png" alt="App de escritorio actual: hilos por proyecto, nuevo hilo, selector de modelo y revisor automático" width="100%">
 </p>
-<p align="center"><sub><b>La app de escritorio:</b> Claude desarrolla y GPT-5.5 revisa a la vez. Hilos por proyecto, la revisión en el chat y el diff de los cambios.</sub></p>
+<p align="center"><sub><b>La app de escritorio:</b> proyectos, hilos, modelos y revisión automática en una misma ventana. Capturas reales de la interfaz actual con hilos de ejemplo; no se han ejecutado tareas para generarlas.</sub></p>
 
 ---
 
@@ -172,7 +172,7 @@ Abre **http://localhost:5050** y entra con `admin` / `zer0code`. La primera vez 
 ## 📱 En tu móvil, como una app más
 
 <p align="center">
-  <img src="docs/screenshots/mobile-zer0code.jpg" alt="Tres móviles: pantalla de inicio, tarea con permiso pendiente y ventana para instalar la app" width="100%">
+  <img src="docs/screenshots/app-mobile.png" alt="Interfaz móvil actual: inicio en tema claro, conversaciones en tema oscuro y ajustes de app y notificaciones" width="100%">
 </p>
 
 - **Se instala desde el navegador.** En Android (Chrome): ⋮ → *Instalar aplicación*. En iPhone (Safari): Compartir → *Añadir a pantalla de inicio*.
@@ -199,12 +199,12 @@ Un modelo desarrolla y otro lo revisa **a la vez**. Se maneja desde la **app de 
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/desktop-orquestador.jpg" alt="Ajustes del orquestador: Opus 5.5 desarrolla y GPT-5.5 revisa, con esfuerzo, revisión en vivo y corregir solo"></td>
-    <td width="50%"><img src="docs/screenshots/desktop-claro.jpg" alt="Tema claro: pestaña Revisiones con la revisión final que propone cambios y el botón Enviar a Opus"></td>
+    <td width="50%"><img src="docs/screenshots/app-orchestrator.png" alt="Ajustes actuales del orquestador: revisión automática, modelo revisor, esfuerzo, revisión en vivo y corrección automática"></td>
+    <td width="50%"><img src="docs/screenshots/app-desktop-light.png" alt="La app de escritorio actual en tema claro, con el icono ZØ y el selector de revisor"></td>
   </tr>
   <tr>
     <td align="center"><sub>Ajustes del orquestador</sub></td>
-    <td align="center"><sub>Tema claro, con las revisiones del hilo en el panel</sub></td>
+    <td align="center"><sub>La misma interfaz en tema claro</sub></td>
   </tr>
 </table>
 
@@ -215,7 +215,7 @@ Conecta ChatGPT en el servidor con `codex login --device-auth` (o desde la app d
 ## ✅ Tú tienes el control
 
 <p align="center">
-  <img src="docs/screenshots/permissions-zer0code.jpg" alt="Tarjeta de permiso: Claude pide ejecutar una migración y ofrece Denegar, Permitir siempre o Permitir" width="100%">
+  <img src="docs/screenshots/app-execution-modes.png" alt="Selector actual de modos de ejecución para decidir cuánta autonomía dar al agente" width="100%">
 </p>
 
 Cuando Claude necesita usar una herramienta, aparece una tarjeta con lo que quiere hacer: el comando exacto o el diff del archivo. Eliges **Denegar**, **Permitir siempre** en esa conversación o **Permitir**. Las peticiones pendientes te esperan en todos tus dispositivos y reaparecen al reconectar.
@@ -234,10 +234,10 @@ Elige cuánta libertad le das en cada momento:
 ## 🎨 Claro, oscuro o como tu sistema
 
 <p align="center">
-  <img src="docs/screenshots/themes-zer0code.jpg" alt="La misma conversación partida en diagonal entre el tema claro y el oscuro" width="100%">
+  <img src="docs/screenshots/app-themes.png" alt="Capturas actuales de la app de escritorio en tema claro y oscuro" width="100%">
 </p>
 
-Paleta cálida con acentos terracota y tipografía editorial, inspirada en claude.ai. Mientras Claude trabaja ves cómo piensa (razonamiento desplegable), cada herramienta que usa y el diff de cada cambio, en tiempo real.
+Interfaz propia de Zer0Code, con icono ZØ, tonos neutros y temas claro y oscuro. En la web y el móvil puedes personalizar el acento y la tipografía. Mientras el agente trabaja ves cómo piensa (razonamiento desplegable), cada herramienta que usa y el diff de cada cambio, en tiempo real.
 
 ---
 
