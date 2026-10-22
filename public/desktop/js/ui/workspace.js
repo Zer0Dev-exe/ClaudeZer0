@@ -46,7 +46,7 @@ export function mountWorkspace(root) {
       h('button', { class: 'icon-btn toggle-sidebar no-drag', type: 'button', title: 'Mostrar barra lateral (Ctrl B)', onclick: () => setUi({ sidebar: true }) }, icon('panel-left')),
       crumbs, h('div', { class: 'topbar-actions' }, orchPill, diffBtn,
         h('button', { class: `icon-btn no-drag${state.ui.panel.open ? ' active' : ''}`, type: 'button', title: 'Panel lateral', onclick: () => setPanel({ open: !state.ui.panel.open }) }, icon('panel-right'))),
-      winctl);
+      ...(winctl ? [winctl] : []));
   }
 
   function threadMenu(anchor) {
