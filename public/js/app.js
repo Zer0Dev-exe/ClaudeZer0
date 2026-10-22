@@ -2983,15 +2983,15 @@ function renderProviderUsage() {
     const icon = `<svg class="chip-icon"><use href="#i-${PROVIDER_ICONS[provider.id] || 'spark'}"/></svg>`;
     const win = provider.quota.available ? tightestWindow(provider.quota) : null;
     if (win) {
-      const reset = formatPlanReset(win.resetsAt).replace(/^Se restablece /, '');
       button.className = `chip-btn plan-chip ${win.percent >= PLAN_CRITICAL_PERCENT ? 'is-full' : win.percent >= PLAN_WARN_PERCENT ? 'is-warn' : ''}`;
-      button.innerHTML = `${icon}<span class="plan-chip-dot"></span>${escapeHtml(provider.name)} · ${win.key === 'session' ? 'sesión' : 'semana'} ${Math.round(win.percent)}%${reset ? `<span class="plan-chip-reset"> · ${escapeHtml(reset)}</span>` : ''}`;
+      button.innerHTML = `${icon}${escapeHtml(provider.name)} ${Math.round(win.percent)}%`;
+      button.title = `${win.key === 'session' ? 'Sesión' : 'Semana'}: ${formatPlanReset(win.resetsAt)}`;
     } else {
       const usage = provider.localUsage;
       const detail = provider.connection.loggedIn ? usage.tracked ? `${usage.responses} resp.` : 'sin datos' : 'sin conectar';
       button.innerHTML = `${icon}${escapeHtml(provider.name)} · ${escapeHtml(detail)}`;
     }
-    button.title = provider.quota.message || provider.quota.scopeLabel || "";
+    if (!win) button.title = provider.quota.message || "";
     chips?.append(button);
   }
   const summary = document.getElementById('provider-usage-summary');
@@ -3552,10 +3552,9 @@ function renderPlanChip() {
     chip.innerHTML = '<svg class="chip-icon"><use href="#i-spark"/></svg>Claude · cuota no disponible';
     return;
   }
-  const label = win.key === 'session' ? 'Claude · sesión' : 'Claude · semana';
-  const reset = formatPlanReset(win.resetsAt).replace(/^Se restablece /, '');
   chip.className = `chip-btn plan-chip ${win.percent >= PLAN_CRITICAL_PERCENT ? 'is-full' : win.percent >= PLAN_WARN_PERCENT ? 'is-warn' : ''}`;
-  chip.innerHTML = `<svg class="chip-icon"><use href="#i-spark"/></svg><span class="plan-chip-dot"></span>${label} ${Math.round(win.percent)}%${reset ? `<span class="plan-chip-reset"> · ${escapeHtml(reset)}</span>` : ''}`;
+  chip.innerHTML = `<svg class="chip-icon"><use href="#i-spark"/></svg>Claude ${Math.round(win.percent)}%`;
+  chip.title = `${win.key === 'session' ? 'Sesión' : 'Semana'}: ${formatPlanReset(win.resetsAt)}`;
   chip.hidden = false;
 }
 

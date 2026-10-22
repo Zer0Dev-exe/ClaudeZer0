@@ -1955,6 +1955,7 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
+.provider-usage-chips { gap: 10px; }
 .provider-usage-chips .chip-btn { gap: 6px; }
 
 .chip-icon {
