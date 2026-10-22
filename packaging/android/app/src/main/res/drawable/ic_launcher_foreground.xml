@@ -1,24 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- El destello de Zer0Code (mismos trazos que public/icon.svg), centrado en la zona segura del icono adaptable -->
+<!-- Logo de Zer0Code (mismos trazos que public/icon.svg), centrado en la zona segura del icono adaptable -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <group
-        android:scaleX="2.2"
-        android:scaleY="2.2"
-        android:translateX="27.6"
-        android:translateY="27.6">
+        android:scaleX="0.19"
+        android:scaleY="0.19"
+        android:translateX="5.36"
+        android:translateY="5.36">
         <path
-            android:pathData="M12,2v7M12,15v7M2,12h7M15,12h7M4.9,4.9l4.6,4.6M14.5,14.5l4.6,4.6M4.9,19.1l4.6,-4.6M14.5,9.5l4.6,-4.6"
-            android:strokeWidth="2.2"
-            android:strokeColor="#D97757"
-            android:strokeLineCap="round" />
+            android:pathData="M118,176h108L118,336h108"
+            android:strokeWidth="34"
+            android:strokeColor="#FAF9F5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
         <path
-            android:pathData="M7.9,2.8l1.7,4.1M14.4,17.1l1.7,4.1M2.8,16.1l4.1,-1.7M17.1,9.6l4.1,-1.7M16.1,2.8l-1.7,4.1M9.6,17.1l-1.7,4.1M2.8,7.9l4.1,1.7M17.1,14.4l4.1,1.7"
-            android:strokeWidth="1.6"
-            android:strokeColor="#D97757"
-            android:strokeLineCap="round" />
+            android:pathData="M338,176a56,56 0 0 1 56,56v48a56,56 0 0 1 -56,56a56,56 0 0 1 -56,-56v-48a56,56 0 0 1 56,-56z"
+            android:strokeWidth="34"
+            android:strokeColor="#FAF9F5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M304,304l68,-96"
+            android:strokeWidth="34"
+            android:strokeColor="#FAF9F5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
     </group>
 </vector>
