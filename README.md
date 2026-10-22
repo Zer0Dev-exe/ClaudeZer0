@@ -22,6 +22,11 @@
   <img src="docs/screenshots/hero.jpg" alt="Zer0Code en el escritorio y en el móvil: una conversación con herramientas y una petición de permiso" width="100%">
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/desktop.jpg" alt="App de escritorio: hilos por proyecto, Claude desarrollando, la revisión de GPT-5.5 con cambios propuestos y el diff a la derecha" width="100%">
+</p>
+<p align="center"><sub><b>La app de escritorio:</b> Claude desarrolla y GPT-5.5 revisa a la vez. Hilos por proyecto, la revisión en el chat y el diff de los cambios.</sub></p>
+
 ---
 
 ## ¿Por qué Zer0Code?
@@ -191,6 +196,17 @@ Un modelo desarrolla y otro lo revisa **a la vez**. Se maneja desde la **app de 
 - **El revisor solo lee.** Corre en solo lectura: no puede tocar tus archivos ni ejecutar nada que los cambie. Recuerda lo que ya señaló en rondas anteriores.
 
 **Qué modelos usa (los elige Zer0Code):** el desarrollador es el Claude por defecto del catálogo (Opus) con esfuerzo alto; el revisor, el mejor modelo de ChatGPT que publique Codex, también con esfuerzo alto. Son de **familias distintas a propósito**: los fallos de un modelo no suelen coincidir con los del otro, que es lo que hace útil una segunda opinión. Si ChatGPT no está conectado, revisa Gemini; y si tampoco, un Claude Sonnet (mejor que nada, pero con el mismo punto ciego). Nada está fijado a un id: se calcula con el catálogo vivo, así que sigue valiendo cuando salgan modelos nuevos. Puedes elegir otro revisor en los ajustes o pulsar *Usar los modelos que recomienda Zer0Code*.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/desktop-orquestador.jpg" alt="Ajustes del orquestador: Opus 5.5 desarrolla y GPT-5.5 revisa, con esfuerzo, revisión en vivo y corregir solo"></td>
+    <td width="50%"><img src="docs/screenshots/desktop-claro.jpg" alt="Tema claro: pestaña Revisiones con la revisión final que propone cambios y el botón Enviar a Opus"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Ajustes del orquestador</sub></td>
+    <td align="center"><sub>Tema claro, con las revisiones del hilo en el panel</sub></td>
+  </tr>
+</table>
 
 Conecta ChatGPT en el servidor con `codex login --device-auth` (o desde la app de escritorio: *Vincular cuentas*).
 
