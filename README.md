@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="banner.svg" alt="Zer0Code: agentes en tu escritorio, navegador y móvil" width="100%">
+  <img src="zer0code-banner.svg" alt="Zer0Code: agentes en tu escritorio, navegador y móvil" width="100%">
 </p>
 
 <h3 align="center">Claude desarrolla, ChatGPT revisa. En tu escritorio, tu navegador y tu móvil.</h3>
@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/hero.jpg" alt="Zer0Code en el escritorio y en el móvil: una conversación con herramientas y una petición de permiso" width="100%">
+  <img src="docs/screenshots/hero-zer0code.jpg" alt="Zer0Code en el escritorio y en el móvil: una conversación con herramientas y una petición de permiso" width="100%">
 </p>
 
 <p align="center">
@@ -172,7 +172,7 @@ Abre **http://localhost:5050** y entra con `admin` / `zer0code`. La primera vez 
 ## 📱 En tu móvil, como una app más
 
 <p align="center">
-  <img src="docs/screenshots/mobile.jpg" alt="Tres móviles: pantalla de inicio, tarea con permiso pendiente y ventana para instalar la app" width="100%">
+  <img src="docs/screenshots/mobile-zer0code.jpg" alt="Tres móviles: pantalla de inicio, tarea con permiso pendiente y ventana para instalar la app" width="100%">
 </p>
 
 - **Se instala desde el navegador.** En Android (Chrome): ⋮ → *Instalar aplicación*. En iPhone (Safari): Compartir → *Añadir a pantalla de inicio*.
@@ -215,7 +215,7 @@ Conecta ChatGPT en el servidor con `codex login --device-auth` (o desde la app d
 ## ✅ Tú tienes el control
 
 <p align="center">
-  <img src="docs/screenshots/permissions.jpg" alt="Tarjeta de permiso: Claude pide ejecutar una migración y ofrece Denegar, Permitir siempre o Permitir" width="100%">
+  <img src="docs/screenshots/permissions-zer0code.jpg" alt="Tarjeta de permiso: Claude pide ejecutar una migración y ofrece Denegar, Permitir siempre o Permitir" width="100%">
 </p>
 
 Cuando Claude necesita usar una herramienta, aparece una tarjeta con lo que quiere hacer: el comando exacto o el diff del archivo. Eliges **Denegar**, **Permitir siempre** en esa conversación o **Permitir**. Las peticiones pendientes te esperan en todos tus dispositivos y reaparecen al reconectar.
@@ -234,7 +234,7 @@ Elige cuánta libertad le das en cada momento:
 ## 🎨 Claro, oscuro o como tu sistema
 
 <p align="center">
-  <img src="docs/screenshots/themes.jpg" alt="La misma conversación partida en diagonal entre el tema claro y el oscuro" width="100%">
+  <img src="docs/screenshots/themes-zer0code.jpg" alt="La misma conversación partida en diagonal entre el tema claro y el oscuro" width="100%">
 </p>
 
 Paleta cálida con acentos terracota y tipografía editorial, inspirada en claude.ai. Mientras Claude trabaja ves cómo piensa (razonamiento desplegable), cada herramienta que usa y el diff de cada cambio, en tiempo real.
