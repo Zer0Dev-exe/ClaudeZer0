@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg">#262624</color>
-    <color name="text">#FAF9F5</color>
-    <color name="muted">#A8A49C</color>
-    <color name="field">#30302E</color>
-    <color name="error">#E8806A</color>
+    <color name="bg">#0B0B0D</color>
+    <color name="card">#161619</color>
+    <color name="text">#FAFAFA</color>
+    <color name="muted">#8B8B94</color>
+    <color name="field">#1F1F23</color>
+    <color name="border">#232327</color>
+    <color name="accent">#FAFAFA</color>
+    <color name="accent_text">#09090B</color>
+    <color name="error">#F05252</color>
 </resources>
