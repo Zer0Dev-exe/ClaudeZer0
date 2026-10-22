@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Construye ClaudeZer0.app y el .dmg en macOS a partir de la carpeta de stage-app.sh.
+# Construye Zer0Code.app y el .dmg en macOS a partir de la carpeta de stage-app.sh.
 # Uso: bash packaging/macos/build-dmg.sh <versión> <carpeta stage> <salida>
 set -euo pipefail
 
@@ -7,10 +7,10 @@ VERSION="$1"; STAGE="$2"; OUT="$3"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARCH="$(uname -m)"
 WORK="$(mktemp -d)"
-APP="$WORK/ClaudeZer0.app"
+APP="$WORK/Zer0Code.app"
 
 # Applet que se queda abierto (-s) para poder detener el servidor al salir
-osacompile -s -o "$APP" "$HERE/ClaudeZer0.applescript"
+osacompile -s -o "$APP" "$HERE/Zer0Code.applescript"
 RES="$APP/Contents/Resources"
 cp -a "$STAGE/app" "$STAGE/runtime" "$RES/"
 install -m 755 "$HERE/start.sh" "$RES/start.sh"
@@ -28,10 +28,10 @@ done
 iconutil -c icns "$ICONSET" -o "$RES/applet.icns"
 
 PLIST="$APP/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleName ClaudeZer0" "$PLIST"
-/usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ClaudeZer0" "$PLIST" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string es.zer0dev.claudezer0" "$PLIST" 2>/dev/null \
-  || /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier es.zer0dev.claudezer0" "$PLIST"
+/usr/libexec/PlistBuddy -c "Set :CFBundleName Zer0Code" "$PLIST"
+/usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Zer0Code" "$PLIST" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string es.zer0dev.zer0code" "$PLIST" 2>/dev/null \
+  || /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier es.zer0dev.zer0code" "$PLIST"
 /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VERSION" "$PLIST" 2>/dev/null \
   || /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
 /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 12.0" "$PLIST" 2>/dev/null || true
@@ -45,5 +45,5 @@ mkdir -p "$DMG_DIR"
 mv "$APP" "$DMG_DIR/"
 ln -s /Applications "$DMG_DIR/Aplicaciones"
 mkdir -p "$OUT"
-hdiutil create -volname "ClaudeZer0 $VERSION" -srcfolder "$DMG_DIR" -ov -format UDZO "$OUT/ClaudeZer0-${VERSION}-${ARCH}.dmg"
-echo "Disco: $OUT/ClaudeZer0-${VERSION}-${ARCH}.dmg"
+hdiutil create -volname "Zer0Code $VERSION" -srcfolder "$DMG_DIR" -ov -format UDZO "$OUT/Zer0Code-${VERSION}-${ARCH}.dmg"
+echo "Disco: $OUT/Zer0Code-${VERSION}-${ARCH}.dmg"

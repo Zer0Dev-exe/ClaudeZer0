@@ -1,15 +1,15 @@
 // Servidor MCP mínimo (stdio, sin dependencias) que Claude Code usa como --permission-prompt-tool.
 // Cuando el CLI necesita permiso para una herramienta, llama a `approve`; aquí se reenvía la petición
-// al servidor de ClaudeZer0, que la muestra en la web y espera la respuesta del usuario.
+// al servidor de Zer0Code, que la muestra en la web y espera la respuesta del usuario.
 import http from 'http';
 import readline from 'readline';
 
-const CALLBACK_URL = process.env.CLAUDEZER0_PERMISSION_URL;
-const SECRET = process.env.CLAUDEZER0_PERMISSION_SECRET;
+const CALLBACK_URL = process.env.ZER0CODE_PERMISSION_URL;
+const SECRET = process.env.ZER0CODE_PERMISSION_SECRET;
 
 const TOOL = {
   name: 'approve',
-  description: 'Uso interno de ClaudeZer0: pide al usuario permiso para ejecutar una herramienta. No lo llames directamente.',
+  description: 'Uso interno de Zer0Code: pide al usuario permiso para ejecutar una herramienta. No lo llames directamente.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -29,7 +29,7 @@ function send(message) {
 function askServer(payload) {
   return new Promise((resolve) => {
     const deny = (message) => resolve({ behavior: 'deny', message });
-    if (!CALLBACK_URL || !SECRET) return deny('ClaudeZer0 no ha configurado el puente de permisos.');
+    if (!CALLBACK_URL || !SECRET) return deny('Zer0Code no ha configurado el puente de permisos.');
 
     const body = JSON.stringify(payload);
     const req = http.request(CALLBACK_URL, {
@@ -37,7 +37,7 @@ function askServer(payload) {
       headers: {
         'content-type': 'application/json',
         'content-length': Buffer.byteLength(body),
-        'x-claudezer0-secret': SECRET
+        'x-zer0code-secret': SECRET
       }
     }, (res) => {
       let data = '';
@@ -50,10 +50,10 @@ function askServer(payload) {
         } catch {
           // respuesta no válida: se deniega abajo
         }
-        deny('Respuesta no válida del servidor de ClaudeZer0.');
+        deny('Respuesta no válida del servidor de Zer0Code.');
       });
     });
-    req.on('error', (err) => deny(`No se pudo contactar con ClaudeZer0: ${err.message}`));
+    req.on('error', (err) => deny(`No se pudo contactar con Zer0Code: ${err.message}`));
     req.end(body);
   });
 }
@@ -69,7 +69,7 @@ async function handle(msg) {
         result: {
           protocolVersion: params?.protocolVersion || '2025-06-18',
           capabilities: { tools: {} },
-          serverInfo: { name: 'claudezer0', version: '1.0.0' }
+          serverInfo: { name: 'zer0code', version: '1.0.0' }
         }
       });
     case 'ping':

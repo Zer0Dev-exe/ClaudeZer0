@@ -14,7 +14,7 @@ printf 'PORT=%s\nHOST=127.0.0.1\nAPP_NAME=Prueba\n' "$PORT" > "$WORK/.env"
 if [ -e "$APP/node_modules/.bin/claude.cmd" ]; then CLAUDE="$APP/node_modules/.bin/claude.cmd"; else CLAUDE="$APP/node_modules/.bin/claude"; fi
 echo "Claude Code: $("$CLAUDE" --version)"
 
-CLAUDEZER0_DATA_DIR="$NATIVE_WORK/data" CLAUDEZER0_ENV_FILE="$NATIVE_WORK/.env" "$NODE" "$APP/server/index.js" > "$WORK/server.log" 2>&1 &
+ZER0CODE_DATA_DIR="$NATIVE_WORK/data" ZER0CODE_ENV_FILE="$NATIVE_WORK/.env" "$NODE" "$APP/server/index.js" > "$WORK/server.log" 2>&1 &
 PID=$!
 trap 'kill $PID 2>/dev/null || true' EXIT
 
@@ -24,5 +24,5 @@ for _ in $(seq 1 30); do
 done
 cat "$WORK/server.log"
 grep -q '"name":"Prueba"' "$WORK/manifest.json" || { echo "El servidor no responde como debería"; exit 1; }
-[ -f "$WORK/data/auth.json" ] || { echo "No ha creado los datos en CLAUDEZER0_DATA_DIR"; exit 1; }
+[ -f "$WORK/data/auth.json" ] || { echo "No ha creado los datos en ZER0CODE_DATA_DIR"; exit 1; }
 echo "Prueba superada"

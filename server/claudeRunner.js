@@ -62,7 +62,7 @@ if (!fs.existsSync(clientConfigDir)) {
 }
 
 // Una tarea como máximo por usuario: usuario -> proceso de Claude Code
-const activeProcesses = new Map();
+export const activeProcesses = new Map();
 
 const MAX_ATTACHMENTS = 10;
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
@@ -71,13 +71,13 @@ const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
  * Escribir los adjuntos en una carpeta temporal del sistema (se borra al terminar la tarea).
  * No se guardan en el workspace ni en el historial.
  */
-function writeTempAttachments(attachments) {
+export function writeTempAttachments(attachments) {
   if (!Array.isArray(attachments) || attachments.length === 0) return null;
   if (attachments.length > MAX_ATTACHMENTS) {
     throw new Error(`Máximo ${MAX_ATTACHMENTS} archivos adjuntos por mensaje.`);
   }
 
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudezer0-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zer0code-'));
   const files = [];
   try {
     attachments.forEach((att, i) => {
@@ -97,7 +97,7 @@ function writeTempAttachments(attachments) {
   return { dir, files };
 }
 
-function removeTempDir(dir) {
+export function removeTempDir(dir) {
   if (!dir) return;
   try {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -118,10 +118,10 @@ const CLI_PERMISSION_MODES = {
   bypassPermissions: 'bypassPermissions'
 };
 
-const PERMISSION_TOOL = 'mcp__claudezer0__approve';
+const PERMISSION_TOOL = 'mcp__zer0code__approve';
 const permissionMcpScript = path.join(__dirname, 'permissionMcp.js');
 
-const tmpDir = path.join(DATA_DIR, '.tmp');
+export const tmpDir = path.join(DATA_DIR, '.tmp');
 if (!fs.existsSync(tmpDir)) {
   try {
     fs.mkdirSync(tmpDir, { recursive: true });
@@ -356,20 +356,20 @@ export function executeTask({
 
   args.push('--permission-mode', CLI_PERMISSION_MODES[permissionMode] || 'default');
 
-  // Cuando Claude Code necesita permiso lo pide a través del servidor MCP de ClaudeZer0 (y este, a la web).
+  // Cuando Claude Code necesita permiso lo pide a través del servidor MCP de Zer0Code (y este, a la web).
   // La configuración va en un archivo temporal porque lleva el secreto de la tarea.
   let mcpConfigPath = null;
   if (permissionBridge) {
     mcpConfigPath = path.join(tmpDir, `mcp-${taskId}.json`);
     fs.writeFileSync(mcpConfigPath, JSON.stringify({
       mcpServers: {
-        claudezer0: {
+        zer0code: {
           type: 'stdio',
           command: process.execPath,
           args: [permissionMcpScript],
           env: {
-            CLAUDEZER0_PERMISSION_URL: permissionBridge.url,
-            CLAUDEZER0_PERMISSION_SECRET: permissionBridge.secret
+            ZER0CODE_PERMISSION_URL: permissionBridge.url,
+            ZER0CODE_PERMISSION_SECRET: permissionBridge.secret
           }
         }
       }
@@ -396,7 +396,7 @@ export function executeTask({
   let instructionsPath = null;
   if (customInstructions && customInstructions.trim()) {
     instructionsPath = path.join(tmpDir, `instructions-${taskId}.txt`);
-    fs.writeFileSync(instructionsPath, customInstructions.trim().slice(0, 4000), 'utf-8');
+    fs.writeFileSync(instructionsPath, customInstructions.trim().slice(0, 8000), 'utf-8');
     args.push('--append-system-prompt-file', instructionsPath);
   }
 
@@ -632,7 +632,7 @@ export function executeTask({
 }
 
 // Liberar el hueco del usuario solo si sigue ocupado por este proceso (tras cancelar puede haber otro)
-function releaseProcess(owner, child) {
+export function releaseProcess(owner, child) {
   if (activeProcesses.get(owner) === child) activeProcesses.delete(owner);
 }
 

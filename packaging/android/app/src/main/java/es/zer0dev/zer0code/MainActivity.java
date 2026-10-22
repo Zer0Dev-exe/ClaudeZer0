@@ -1,4 +1,4 @@
-package es.zer0dev.claudezer0;
+package es.zer0dev.zer0code;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -53,11 +53,11 @@ import java.util.concurrent.Executors;
 import javax.net.ssl.SSLException;
 
 /**
- * App de Android de ClaudeZer0: pide la dirección del servidor la primera vez, comprueba que es
- * un ClaudeZer0 y abre la web a pantalla completa. Cada instalación se conecta a su propio servidor.
+ * App de Android de Zer0Code: pide la dirección del servidor la primera vez, comprueba que es
+ * un Zer0Code y abre la web a pantalla completa. Cada instalación se conecta a su propio servidor.
  */
 public class MainActivity extends Activity {
-    private static final String PREFS = "claudezer0";
+    private static final String PREFS = "zer0code";
     private static final String KEY_SERVER = "server_url";
     private static final int FILE_REQUEST = 1;
 
@@ -99,12 +99,12 @@ public class MainActivity extends Activity {
         icon.setImageResource(R.drawable.ic_launcher_foreground);
         column.addView(icon, new LinearLayout.LayoutParams(dp(112), dp(112)));
 
-        TextView title = text("ClaudeZer0", 30, R.color.text);
+        TextView title = text("Zer0Code", 30, R.color.text);
         title.setTypeface(Typeface.SERIF);
         title.setGravity(Gravity.CENTER);
         column.addView(title, matchWidth(0));
 
-        TextView intro = text("Escribe la dirección de tu servidor de ClaudeZer0. La ves al arrancarlo, por ejemplo https://mi-servidor.tailnet.ts.net o http://192.168.1.50:5050.", 15, R.color.muted);
+        TextView intro = text("Escribe la dirección de tu servidor de Zer0Code. La ves al arrancarlo, por ejemplo https://mi-servidor.tailnet.ts.net o http://192.168.1.50:5050.", 15, R.color.muted);
         intro.setGravity(Gravity.CENTER);
         column.addView(intro, matchWidth(dp(10)));
 
@@ -182,7 +182,7 @@ public class MainActivity extends Activity {
         return url;
     }
 
-    /** Devuelve null si la dirección es un servidor de ClaudeZer0, o el motivo por el que no. */
+    /** Devuelve null si la dirección es un servidor de Zer0Code, o el motivo por el que no. */
     private static String checkServer(String url) {
         HttpURLConnection connection = null;
         try {
@@ -192,14 +192,14 @@ public class MainActivity extends Activity {
             int code = connection.getResponseCode();
             if (code != 200) return "El servidor ha respondido con el código " + code + ".";
             String body = readUpTo(connection.getInputStream(), 64 * 1024);
-            if (!body.contains("\"start_url\"")) return "Esa dirección responde, pero no es un servidor de ClaudeZer0.";
+            if (!body.contains("\"start_url\"")) return "Esa dirección responde, pero no es un servidor de Zer0Code.";
             return null;
         } catch (UnknownHostException e) {
             return "No se encuentra el servidor. Revisa la dirección y, si usas Tailscale, que esté activo en el móvil.";
         } catch (SSLException e) {
             return "El certificado HTTPS del servidor no es válido.";
         } catch (ConnectException e) {
-            return "No hay ningún servidor de ClaudeZer0 en esa dirección. Comprueba que está arrancado, el puerto y que el móvil está en la misma red (o con Tailscale activo).";
+            return "No hay ningún servidor de Zer0Code en esa dirección. Comprueba que está arrancado, el puerto y que el móvil está en la misma red (o con Tailscale activo).";
         } catch (SocketTimeoutException e) {
             return "El servidor no responde. Comprueba que el móvil llega a él (misma Wi-Fi o Tailscale activo).";
         } catch (IOException | IllegalArgumentException e) {
@@ -233,9 +233,9 @@ public class MainActivity extends Activity {
         settings.setDomStorageEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
         // La web usa esta marca y el puente para ofrecer «Cambiar de servidor»
-        settings.setUserAgentString(settings.getUserAgentString() + " ClaudeZer0Android/" + BuildConfig.VERSION_NAME);
+        settings.setUserAgentString(settings.getUserAgentString() + " Zer0CodeAndroid/" + BuildConfig.VERSION_NAME);
         CookieManager.getInstance().setAcceptCookie(true);
-        webView.addJavascriptInterface(new Bridge(), "ClaudeZer0Android");
+        webView.addJavascriptInterface(new Bridge(), "Zer0CodeAndroid");
         webView.setWebViewClient(new Client());
         webView.setWebChromeClient(new Chrome());
 
@@ -253,7 +253,7 @@ public class MainActivity extends Activity {
         column.setBackgroundColor(getColor(R.color.bg));
         column.setClickable(true);
 
-        TextView title = text("No se puede abrir ClaudeZer0", 22, R.color.text);
+        TextView title = text("No se puede abrir Zer0Code", 22, R.color.text);
         title.setTypeface(Typeface.SERIF);
         title.setGravity(Gravity.CENTER);
         column.addView(title, matchWidth(0));
@@ -337,7 +337,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Puente con la web: window.ClaudeZer0Android.changeServer() */
+    /** Puente con la web: window.Zer0CodeAndroid.changeServer() */
     private class Bridge {
         @JavascriptInterface
         public void changeServer() {

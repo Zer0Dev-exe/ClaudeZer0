@@ -1,12 +1,12 @@
 [Unit]
-Description=ClaudeZer0 para el usuario %i
+Description=Zer0Code para el usuario %i
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=%i
-ExecStart=/usr/bin/claudezer0 run
+ExecStart=/usr/bin/zer0code run
 Restart=always
 RestartSec=3
 # Al parar el servicio, terminar también las tareas de Claude Code que estén en marcha

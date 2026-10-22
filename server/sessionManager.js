@@ -104,10 +104,26 @@ export function setClaudeSessionId(id, claudeSessionId) {
   }
 }
 
-export function addMessageToSession(id, message) {
-  if (!sessions[id]) {
-    createSession('Nueva conversación');
+/**
+ * Id de sesión de un proveedor (Claude usa `claudeSessionId`; ChatGPT y Gemini, `providerSessions`)
+ */
+export function getProviderSessionId(session, provider) {
+  if (!session) return null;
+  return provider === 'claude' ? session.claudeSessionId : session.providerSessions?.[provider] || null;
+}
+
+export function setProviderSessionId(id, provider, value) {
+  if (provider === 'claude') return setClaudeSessionId(id, value);
+  if (sessions[id]) {
+    sessions[id].providerSessions = { ...sessions[id].providerSessions, [provider]: value };
+    sessions[id].updatedAt = Date.now();
+    saveSessions();
   }
+}
+
+export function addMessageToSession(id, message) {
+  // La conversación pudo borrarse mientras el proveedor respondía: no tumbar el servidor
+  if (!sessions[id]) return null;
   const s = sessions[id];
   s.messages.push(message);
   s.updatedAt = Date.now();

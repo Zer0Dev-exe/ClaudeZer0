@@ -12,11 +12,11 @@ def appVersionCode = numbers.find() ? numbers.group(1).toInteger() * 10000 + num
 def keystoreFile = System.getenv('KEYSTORE_FILE')
 
 android {
-    namespace 'es.zer0dev.claudezer0'
+    namespace 'es.zer0dev.zer0code'
     compileSdk 35
 
     defaultConfig {
-        applicationId 'es.zer0dev.claudezer0'
+        applicationId 'es.zer0dev.zer0code'
         minSdk 26
         targetSdk 35
         versionCode appVersionCode
@@ -29,7 +29,7 @@ android {
                 storeFile file(keystoreFile)
                 storeType 'pkcs12'
                 storePassword System.getenv('KEYSTORE_PASSWORD')
-                keyAlias System.getenv('KEY_ALIAS') ?: 'claudezer0'
+                keyAlias System.getenv('KEY_ALIAS') ?: 'zer0code'
                 keyPassword System.getenv('KEYSTORE_PASSWORD')
             }
         }

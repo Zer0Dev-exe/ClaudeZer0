@@ -1,8 +1,8 @@
 #!/bin/bash
-# Arranca el servidor de ClaudeZer0.app en segundo plano y escribe su PID (lo usa el applet para
+# Arranca el servidor de Zer0Code.app en segundo plano y escribe su PID (lo usa el applet para
 # detenerlo al salir). Si ya está en marcha, solo abre el navegador. Datos en ~/Library/Application Support.
 RES="$(cd "$(dirname "$0")" && pwd)"
-SUP="$HOME/Library/Application Support/ClaudeZer0"
+SUP="$HOME/Library/Application Support/Zer0Code"
 mkdir -p "$SUP"
 [ -f "$SUP/.env" ] || cp "$RES/app/.env.example" "$SUP/.env"
 
@@ -13,6 +13,6 @@ if curl -fs -o /dev/null --max-time 2 "http://127.0.0.1:$PORT/manifest.json"; th
   exit 0
 fi
 
-export CLAUDEZER0_DATA_DIR="$SUP/data" CLAUDEZER0_ENV_FILE="$SUP/.env" CLAUDEZER0_OPEN_BROWSER=1
-nohup "$RES/runtime/node" "$RES/app/server/index.js" >> "$SUP/claudezer0.log" 2>&1 < /dev/null &
+export ZER0CODE_DATA_DIR="$SUP/data" ZER0CODE_ENV_FILE="$SUP/.env" ZER0CODE_OPEN_BROWSER=1
+nohup "$RES/runtime/node" "$RES/app/server/index.js" >> "$SUP/zer0code.log" 2>&1 < /dev/null &
 echo $!

@@ -83,13 +83,13 @@ jobs:
       - name: Compilar el instalador
         shell: pwsh
         run: |
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.version.outputs.version }}" "/DStageDir=$PWD\dist\stage" "/DOutputDir=$PWD\dist\out" packaging\windows\ClaudeZer0.iss
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.version.outputs.version }}" "/DStageDir=$PWD\dist\stage" "/DOutputDir=$PWD\dist\out" packaging\windows\Zer0Code.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Probar el instalador (instalación silenciosa)
         run: |
           SETUP="$(ls dist/out/*.exe)"
           "$SETUP" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART
-          INSTALLED="$LOCALAPPDATA/Programs/ClaudeZer0"
+          INSTALLED="$LOCALAPPDATA/Programs/Zer0Code"
           ls "$INSTALLED"
           bash packaging/smoke-test.sh "$INSTALLED/runtime/node.exe" "$INSTALLED/app"
       - uses: actions/upload-artifact@v4
@@ -127,9 +127,9 @@ jobs:
       - name: Probar el .deb (instalar, arrancar y desinstalar)
         run: |
           sudo apt-get install -y "$PWD/$(ls dist/out/*.deb)"
-          claudezer0 version
-          bash packaging/smoke-test.sh /opt/claudezer0/runtime/node /opt/claudezer0/app
-          sudo apt-get remove -y claudezer0
+          zer0code version
+          bash packaging/smoke-test.sh /opt/zer0code/runtime/node /opt/zer0code/app
+          sudo apt-get remove -y zer0code
       - uses: actions/upload-artifact@v4
         with:
           name: linux-${{ matrix.arch }}
@@ -152,7 +152,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - name: Preparar la app
         run: bash packaging/stage-app.sh "$PWD/dist/stage"
-      - name: Construir ClaudeZer0.app y el .dmg
+      - name: Construir Zer0Code.app y el .dmg
         run: |
           # hdiutil a veces falla en los runners con «Resource busy»: reintentar
           for i in 1 2 3; do bash packaging/macos/build-dmg.sh "${{ needs.version.outputs.version }}" "$PWD/dist/stage" "$PWD/dist/out" && break; sleep 10; done
@@ -161,8 +161,8 @@ jobs:
         run: |
           MOUNT="$(mktemp -d)"
           hdiutil attach "$(ls dist/out/*.dmg)" -mountpoint "$MOUNT" -nobrowse
-          RES="$MOUNT/ClaudeZer0.app/Contents/Resources"
-          codesign --verify "$MOUNT/ClaudeZer0.app"
+          RES="$MOUNT/Zer0Code.app/Contents/Resources"
+          codesign --verify "$MOUNT/Zer0Code.app"
           bash packaging/smoke-test.sh "$RES/runtime/node" "$RES/app"
           hdiutil detach "$MOUNT"
       - uses: actions/upload-artifact@v4
@@ -207,7 +207,7 @@ jobs:
         run: |
           APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
           mkdir -p dist/out
-          cp packaging/android/app/build/outputs/apk/release/app-release.apk "dist/out/ClaudeZer0-${{ needs.version.outputs.version }}.apk"
+          cp packaging/android/app/build/outputs/apk/release/app-release.apk "dist/out/Zer0Code-${{ needs.version.outputs.version }}.apk"
           "$APKSIGNER" verify --print-certs dist/out/*.apk
       - uses: actions/upload-artifact@v4
         with:
