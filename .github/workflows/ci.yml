@@ -34,7 +34,9 @@ jobs:
       - name: Instalar dependencias
         run: pnpm install --frozen-lockfile
       - name: Comprobar sintaxis
-        run: find . -name '*.js' -not -path './node_modules/*' -print0 | xargs -0 -r -n1 node --check
+        run: find . -name '*.js' -not -path '*/node_modules/*' -not -path './dist/*' -print0 | xargs -0 -r -n1 node --check
+      - name: Tests del orquestador
+        run: node --test test/
 
   # Si todos los jobs anteriores pasan y el PR es de Dependabot, se hace merge solo.
   # Las subidas de versión major se quedan abiertas para revisarlas a mano.

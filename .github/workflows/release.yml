@@ -1,4 +1,5 @@
-# Instaladores: Windows (.exe), Linux (.deb x64 y ARM), macOS (.dmg) y Android (.apk).
+# Instaladores: Windows (.exe), Linux (.deb x64 y ARM), macOS (.dmg) y Android (.apk),
+# más la app de escritorio (Electron): Windows (.exe), Linux (AppImage y .deb) y macOS (.dmg).
 # - Al publicar un release: los compila, los prueba y los adjunta al release (con SHA256SUMS.txt).
 # - En los PR que tocan el empaquetado: los compila y prueba, y quedan como artefactos del workflow.
 # - A mano (Actions -> Instaladores -> Run workflow): para un tag ya existente.
@@ -15,6 +16,7 @@ on:
   pull_request:
     paths:
       - 'packaging/**'
+      - 'desktop/**'
       - '.github/workflows/release.yml'
 
 permissions:
@@ -215,9 +217,67 @@ jobs:
           path: dist/out/*.apk
           if-no-files-found: error
 
+  desktop:
+    name: Escritorio (${{ matrix.name }})
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            runner: ubuntu-latest
+          - name: Linux ARM
+            runner: ubuntu-24.04-arm
+          - name: Windows
+            runner: windows-latest
+          - name: macOS
+            runner: macos-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Preparar el servidor que va dentro de la app
+        run: bash packaging/stage-app.sh "$PWD/dist/stage" --no-runtime
+      - name: Instalar Electron y electron-builder
+        working-directory: desktop
+        run: npm ci --no-audit --no-fund
+      - name: Compilar la app de escritorio
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --publish never -c.extraMetadata.version=${{ needs.version.outputs.version }}
+      - name: Probar el servidor integrado (Electron funcionando como Node)
+        run: |
+          OUT="$PWD/dist/desktop"
+          case "$RUNNER_OS" in
+            Linux)   ELECTRON="$(ls "$OUT"/linux*-unpacked/zer0code* | head -1)"; APP="$(ls -d "$OUT"/linux*-unpacked/resources/app-server)" ;;
+            Windows) ELECTRON="$OUT/win-unpacked/Zer0Code.exe"; APP="$OUT/win-unpacked/resources/app-server" ;;
+            macOS)   ELECTRON="$(ls -d "$OUT"/mac*/Zer0Code.app)/Contents/MacOS/Zer0Code"; APP="$(ls -d "$OUT"/mac*/Zer0Code.app)/Contents/Resources/app-server" ;;
+          esac
+          ELECTRON_RUN_AS_NODE=1 bash packaging/smoke-test.sh "$ELECTRON" "$APP"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.runner }}
+          path: |
+            dist/desktop/*.exe
+            dist/desktop/*.dmg
+            dist/desktop/*.AppImage
+            dist/desktop/*.deb
+          if-no-files-found: error
+
   publish:
     name: Adjuntar al release
-    needs: [version, windows, linux, macos, android]
+    needs: [version, windows, linux, macos, android, desktop]
     if: needs.version.outputs.tag != ''
     runs-on: ubuntu-latest
     steps:
