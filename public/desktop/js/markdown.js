@@ -7,6 +7,8 @@ function inline(text) {
   let s = esc(text);
   const codes = [];
   s = s.replace(/`([^`\n]+)`/g, (_, c) => { codes.push(c); return `\u0000${codes.length - 1}\u0000`; });
+  // Imágenes locales (rutas del proyecto): se descargan con sesión en la línea de tiempo
+  s = s.replace(/!\[([^\]\n]*)\]\(((?!https?:|data:|\/\/)[^\s)]+\.(?:png|jpe?g|gif|webp|svg))\)/gi, '<img class="md-image" data-src="$2" alt="$1">');
   s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
     .replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, '$1<em>$2</em>')
     .replace(/~~([^~\n]+)~~/g, '<del>$1</del>')

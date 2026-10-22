@@ -3523,3 +3523,16 @@ kbd {
   font-weight: 500;
   box-shadow: var(--shadow-sm);
 }
+
+/* Imágenes que Claude muestra dentro del chat */
+.text-body img.chat-image {
+  display: block;
+  max-width: min(100%, 560px);
+  height: auto;
+  margin: 10px 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: zoom-in;
+}
+.text-body img.chat-image.is-loading { min-height: 120px; min-width: 200px; background: var(--bg); }
+.text-body img.chat-image.is-missing { cursor: default; padding: 8px 10px; color: var(--muted); font-size: 0.85rem; }

@@ -653,6 +653,35 @@ app.get('/api/workspace', requireAuth, (req, res) => {
   }
 });
 
+// Imágenes de la carpeta de trabajo para mostrarlas dentro del chat (solo lectura, solo imágenes)
+const CHAT_IMAGE_TYPES = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+  '.webp': 'image/webp', '.svg': 'image/svg+xml'
+};
+const CHAT_IMAGE_MAX_BYTES = 15 * 1024 * 1024;
+// Para que el chat muestre la imagen en vez de solo nombrar el archivo
+const CHAT_IMAGE_HINT = 'Cuando crees o generes una imagen (png, jpg, gif, webp o svg), guárdala en la carpeta de trabajo y muéstrala en tu respuesta con la sintaxis Markdown ![descripción](ruta/de/la/imagen.png), usando la ruta del archivo (sin espacios en el nombre). Así el usuario la ve directamente en el chat sin tener que abrir archivos.';
+
+app.get('/api/files/image', requireAuth, (req, res) => {
+  const requested = String(req.query.path || '');
+  const type = CHAT_IMAGE_TYPES[path.extname(requested).toLowerCase()];
+  if (!requested || !type) return res.status(400).json({ success: false, error: 'Solo se pueden mostrar imágenes.' });
+  try {
+    const base = String(req.query.workspace || getCurrentWorkspace(req.user));
+    const resolved = fs.realpathSync(path.resolve(base, requested));
+    if (!isPathAllowed(req.user, base) || !isPathAllowed(req.user, resolved)) {
+      return res.status(403).json({ success: false, error: 'No tienes acceso a esa imagen.' });
+    }
+    const stat = fs.statSync(resolved);
+    if (!stat.isFile()) return res.status(404).json({ success: false, error: 'Imagen no encontrada.' });
+    if (stat.size > CHAT_IMAGE_MAX_BYTES) return res.status(413).json({ success: false, error: 'La imagen es demasiado grande.' });
+    res.set({ 'Content-Type': type, 'Cache-Control': 'private, max-age=60', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "sandbox; default-src 'none'; style-src 'unsafe-inline'" });
+    return fs.createReadStream(resolved).pipe(res);
+  } catch {
+    return res.status(404).json({ success: false, error: 'Imagen no encontrada.' });
+  }
+});
+
 // Cambios sin guardar de una carpeta (panel de cambios de la app de escritorio)
 function gitTarget(req, res) {
   const dir = String(req.query.workspace || getCurrentWorkspace(req.user));
@@ -1005,7 +1034,7 @@ function startTurn(user, params) {
       attachments: attachmentList,
       effort: effort || null,
       outputStyle: outputStyle || null,
-      customInstructions: [getProfilePrompt(owner), typeof customInstructions === 'string' ? customInstructions : '']
+      customInstructions: [CHAT_IMAGE_HINT, getProfilePrompt(owner), typeof customInstructions === 'string' ? customInstructions : '']
         .filter(Boolean).join('\n\n') || null,
       onEvent: (event) => {
         // Id de la sesión del proveedor, por si el servidor se apaga antes de terminar

@@ -400,6 +400,57 @@ btnLogout.addEventListener('click', async () => {
 });
 
 // Helper for authenticated fetch
+// --- Imágenes dentro del chat ------------------------------------------------
+// Claude las enseña con ![texto](ruta). Una ruta local no se puede pedir con <img> (hace falta el
+// token), así que se descarga con sesión y se sustituye por un blob.
+const chatImageCache = new Map();
+
+function localImagePath(img) {
+  const src = img.getAttribute('src') || '';
+  if (!src || /^(https?:|data:|blob:|\/\/)/i.test(src) || img.dataset.localImage) return null;
+  if (!/\.(png|jpe?g|gif|webp|svg)$/i.test(src.split(/[?#]/)[0])) return null;
+  try { return decodeURIComponent(src.replace(/^file:\/\//, '')); } catch { return src; }
+}
+
+async function loadChatImage(path) {
+  const key = `${currentWorkspace}\n${path}`;
+  if (!chatImageCache.has(key)) {
+    chatImageCache.set(key, authFetch(`/api/files/image?path=${encodeURIComponent(path)}&workspace=${encodeURIComponent(currentWorkspace || '')}`)
+      .then(res => res.ok ? res.blob() : Promise.reject(new Error('no disponible')))
+      .then(blob => URL.createObjectURL(blob)));
+  }
+  return chatImageCache.get(key);
+}
+
+async function hydrateChatImage(img) {
+  const path = localImagePath(img);
+  if (!path) return;
+  img.dataset.localImage = path;
+  img.removeAttribute('src');
+  img.classList.add('chat-image', 'is-loading');
+  try {
+    const url = await loadChatImage(path);
+    img.src = url;
+    img.classList.remove('is-loading');
+    img.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
+  } catch {
+    chatImageCache.delete(`${currentWorkspace}\n${path}`);
+    img.classList.remove('is-loading');
+    img.classList.add('is-missing');
+    img.alt = `${img.alt || 'Imagen'} (no disponible)`;
+  }
+}
+
+new MutationObserver(mutations => {
+  for (const mutation of mutations) {
+    mutation.addedNodes.forEach(node => {
+      if (node.nodeType !== 1) return;
+      if (node.tagName === 'IMG') hydrateChatImage(node);
+      else node.querySelectorAll?.('img').forEach(hydrateChatImage);
+    });
+  }
+}).observe(messagesContainer, { childList: true, subtree: true });
+
 async function authFetch(url, options = {}) {
   options.headers = options.headers || {};
   options.headers['Authorization'] = `Bearer ${authToken}`;

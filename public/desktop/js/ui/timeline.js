@@ -1,6 +1,7 @@
 import { h, clear, icon, formatDuration, relativePath, basename } from '../dom.js';
 import { renderMarkdown } from '../markdown.js';
-import { state, on, modelInfo, setPanel, emit } from '../store.js';
+import { state, on, modelInfo, setPanel, emit, activeWorkspace } from '../store.js';
+import { auth } from '../api.js';
 import { buildReviewCard } from './reviews.js';
 
 const EDIT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit']);
@@ -31,10 +32,47 @@ export function editedFiles(msg) {
   return [...files];
 }
 
+// Imágenes que Claude muestra con ![texto](ruta): el <img> no puede llevar el token, así que se descargan con sesión
+const imageCache = new Map();
+function loadImage(src, workspace) {
+  const key = `${workspace}\n${src}`;
+  if (!imageCache.has(key)) {
+    imageCache.set(key, fetch(`/api/files/image?path=${encodeURIComponent(src)}&workspace=${encodeURIComponent(workspace || '')}`, { headers: { Authorization: `Bearer ${auth.token}` } })
+      .then(res => res.ok ? res.blob() : Promise.reject(new Error('no disponible')))
+      .then(blob => URL.createObjectURL(blob))
+      .catch(err => { imageCache.delete(key); throw err; }));
+  }
+  return imageCache.get(key);
+}
+
+async function hydrateImage(img) {
+  const src = img.dataset.src;
+  if (!src || img.dataset.loaded) return;
+  img.dataset.loaded = '1';
+  img.classList.add('is-loading');
+  try {
+    const url = await loadImage(src, activeWorkspace());
+    img.src = url;
+    img.classList.remove('is-loading');
+    img.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
+  } catch {
+    img.classList.remove('is-loading');
+    img.classList.add('is-missing');
+    img.alt = `${img.alt || 'Imagen'} (no disponible)`;
+  }
+}
+
 export function createTimeline() {
   const scroll = h('div', { class: 'timeline-scroll' });
   const list = h('div', { class: 'timeline' });
   scroll.append(list);
+  new MutationObserver(mutations => {
+    for (const m of mutations) m.addedNodes.forEach(n => {
+      if (n.nodeType !== 1) return;
+      if (n.matches?.('img[data-src]')) hydrateImage(n);
+      else n.querySelectorAll?.('img[data-src]').forEach(hydrateImage);
+    });
+  }).observe(list, { childList: true, subtree: true });
   const workOpen = new Map(); // id del mensaje -> desplegado a mano
   const changedOpen = new Set();
   const mdCache = new Map(); // id -> { text, html }

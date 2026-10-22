@@ -140,7 +140,26 @@ export function createComposer() {
       h('input', { type: 'checkbox', checked: !!cfg?.enabled, onchange: async (e) => { await saveOrchestration({ enabled: e.target.checked }); closePopover(); } }),
       h('span', { class: 'track' }), h('span', { class: 'text' }, h('b', { style: { fontWeight: 500 } }, 'Revisión automática'),
         h('small', null, rev ? `Revisa ${shortName(rev.name)}` : 'No hay ningún modelo disponible para revisar')));
+    // Con quién revisar: se elige aquí mismo (el modelo concreto y el esfuerzo, en los ajustes)
+    const reviewerModelFor = (provider) => {
+      const models = state.models.filter(m => (m.provider || 'claude') === provider);
+      if (provider === 'claude') return models.find(m => /sonnet/i.test(m.id) && !m.legacy) || models.find(m => !m.legacy) || models[0];
+      return models.find(m => m.providerDefault) || models[0];
+    };
+    const chosen = cfg?.reviewerModel ? state.models.find(m => m.id === cfg.reviewerModel) : null;
+    const chosenProvider = chosen ? (chosen.provider || 'claude') : null;
+    const pick = async (model) => { await saveOrchestration({ enabled: true, reviewerModel: model, reviewerEffort: null }); closePopover(); };
+    const choices = [
+      menuItem({ label: 'Automático', hint: state.orch?.recommended?.reviewer ? `Recomendado: ${shortName(modelInfo(state.orch.recommended.reviewer.model).name)}` : '', selected: !chosen, onClick: () => pick(null) }),
+      ...['claude', 'codex', 'gemini'].map(provider => {
+        const model = reviewerModelFor(provider);
+        const connected = provider === 'claude' || state.providers[provider]?.loggedIn;
+        if (!model) return null;
+        return menuItem({ label: PROVIDER_LABEL[provider], hint: connected ? shortName(model.name) : 'sin conectar', selected: chosenProvider === provider, disabled: !connected, onClick: () => pick(model.id) });
+      }).filter(Boolean)
+    ];
     showPopover(anchor, h('div', null, toggle, h('div', { class: 'menu-sep' }),
+      h('div', { class: 'menu-head' }, 'Revisa con'), choices, h('div', { class: 'menu-sep' }),
       menuItem({ label: 'Ajustes del orquestador…', icon: 'settings', onClick: () => { closePopover(); openOrchestrator(); } })), { side: 'top', className: 'wide' });
   };
 

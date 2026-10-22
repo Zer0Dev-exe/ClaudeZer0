@@ -255,6 +255,9 @@ button:disabled { cursor: default; opacity: 0.5; }
 
 .md { font-size: 14.5px; line-height: 1.65; overflow-wrap: anywhere; }
 .md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }
+.md img.md-image { display: block; max-width: min(100%, 560px); height: auto; margin: 10px 0; border: 1px solid var(--border); border-radius: 12px; cursor: zoom-in; }
+.md img.md-image.is-loading { min-width: 200px; min-height: 120px; background: var(--muted); }
+.md img.md-image.is-missing { cursor: default; padding: 8px 10px; color: var(--muted-foreground); font-size: 0.85rem; }
 .md p { margin: 0 0 10px; } .md ul, .md ol { margin: 0 0 10px; padding-left: 22px; } .md li { margin: 3px 0; }
 .md h2, .md h3, .md h4, .md h5 { margin: 18px 0 8px; line-height: 1.3; font-weight: 600; }
 .md h2 { font-size: 1.25em; } .md h3 { font-size: 1.12em; } .md h4, .md h5 { font-size: 1em; }
