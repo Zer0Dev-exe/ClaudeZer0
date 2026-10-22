@@ -44,6 +44,14 @@ export function assignLegacyOwner(username) {
   if (changed) saveSessions();
 }
 
+function lastAssistant(s) {
+  for (let i = (s.messages || []).length - 1; i >= 0; i--) {
+    const m = s.messages[i];
+    if (m.role === 'assistant') return { lastModel: m.model || null, lastProvider: m.provider || 'claude', lastStatus: m.status || null };
+  }
+  return {};
+}
+
 export function getAllSessions(owner) {
   return Object.values(sessions)
     .filter(s => !s.incognito && s.owner === owner)
@@ -53,7 +61,9 @@ export function getAllSessions(owner) {
       workspace: s.workspace,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
-      messageCount: s.messages ? s.messages.length : 0
+      messageCount: s.messages ? s.messages.length : 0,
+      // Con qué modelo se respondió por última vez (la app de escritorio lo enseña en la fila del hilo)
+      ...lastAssistant(s)
     }))
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
@@ -119,6 +129,19 @@ export function setProviderSessionId(id, provider, value) {
     sessions[id].updatedAt = Date.now();
     saveSessions();
   }
+}
+
+/**
+ * Sesión propia del revisor en cada proveedor: así recuerda lo que ya señaló en rondas anteriores
+ */
+export function getReviewerSessionId(session, provider) {
+  return session?.reviewerSessions?.[provider] || null;
+}
+
+export function setReviewerSessionId(id, provider, value) {
+  if (!sessions[id] || !value) return;
+  sessions[id].reviewerSessions = { ...sessions[id].reviewerSessions, [provider]: value };
+  saveSessions();
 }
 
 export function addMessageToSession(id, message) {

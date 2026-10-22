@@ -3,11 +3,14 @@
 #   <destino>/app      -> servidor, web y dependencias de producción (sin enlaces simbólicos)
 #   <destino>/runtime  -> el ejecutable de Node con el que se ha instalado (mismo sistema y arquitectura)
 # Se ejecuta en el mismo sistema para el que se empaqueta: Claude Code trae un binario nativo por plataforma.
-# Uso: bash packaging/stage-app.sh <destino>
+# Con --no-runtime no copia Node (la app de escritorio usa el que lleva Electron).
+# Uso: bash packaging/stage-app.sh <destino> [--no-runtime]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEST="${1:?Uso: stage-app.sh <destino>}"
+DEST="${1:?Uso: stage-app.sh <destino> [--no-runtime]}"
+WITH_RUNTIME=1
+[ "${2:-}" = "--no-runtime" ] && WITH_RUNTIME=0
 
 rm -rf "$DEST"
 mkdir -p "$DEST/app" "$DEST/runtime"
@@ -27,6 +30,10 @@ else
   exit 1
 fi
 
-NODE_BIN="$(node -p 'process.execPath')"
-cp "$NODE_BIN" "$DEST/runtime/"
+if [ "$WITH_RUNTIME" = 1 ]; then
+  NODE_BIN="$(node -p 'process.execPath')"
+  cp "$NODE_BIN" "$DEST/runtime/"
+else
+  rmdir "$DEST/runtime"
+fi
 echo "App preparada en $DEST (Node $(node -v), $(node -p 'process.platform + "-" + process.arch'))"

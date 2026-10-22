@@ -2,11 +2,12 @@
   <img src="banner.svg" alt="Zer0Code" width="100%">
 </p>
 
-<h3 align="center">Claude Code en tu navegador y en tu móvil. Desde tu propio servidor.</h3>
+<h3 align="center">Claude desarrolla, ChatGPT revisa. En tu escritorio, tu navegador y tu móvil.</h3>
 
 <p align="center">
-  Lanza una tarea desde el sofá, cierra la app y recibe un aviso cuando Claude termine.<br>
-  Una interfaz cálida al estilo de claude.ai, sobre el Claude Code de siempre.
+  Lanza una tarea desde el sofá, cierra la app y recibe un aviso cuando termine.<br>
+  Un orquestador de agentes: un modelo escribe el código y otro, de otra familia, lo revisa a la vez.<br>
+  Las mismas conversaciones en todos tus dispositivos.
 </p>
 
 <p align="center">
@@ -27,6 +28,8 @@
 
 Claude Code es potente, pero vive en una terminal. Zer0Code lo pone en una web que puedes abrir desde cualquier dispositivo, sin renunciar a nada:
 
+- **🧑‍💻 Un equipo de agentes.** Claude desarrolla y ChatGPT (Codex) revisa el código mientras trabaja y al terminar. Si quieres, Claude corrige solo lo que el revisor señale. [Cómo funciona](#orquestador).
+- **🖥️ App de escritorio** para Windows, macOS y Linux, además de la web y la app móvil. Todas enseñan **las mismas conversaciones**, en directo: empieza en el PC, sigue en el móvil.
 - **📱 Una app en tu móvil.** Se instala desde el navegador en Android y iPhone, con su icono y a pantalla completa. Sin tiendas y sin avisos de seguridad.
 - **⏳ Sigue trabajando aunque cierres.** Las tareas se ejecutan en el servidor: bloquea el móvil, vuelve en una hora y la respuesta estará ahí, continuando en directo.
 - **🔔 Te avisa.** Notificación cuando Claude termina, falla o necesita tu permiso. Al tocarla, se abre esa conversación.
@@ -42,12 +45,31 @@ Descarga el instalador de tu sistema en la [**última versión**](https://github
 
 | Sistema | Archivo | Qué instala |
 | :--- | :--- | :--- |
+| 🖥️ **App de escritorio** · Windows | `Zer0Code-Desktop-…-win-x64.exe` | La app con ventana propia, con el servidor dentro o conectada al tuyo |
+| 🖥️ **App de escritorio** · Linux | `Zer0Code-Desktop-…-linux-x86_64.AppImage` · `…-amd64.deb` · `…-arm64.deb` | Lo mismo, para x64 y ARM |
+| 🖥️ **App de escritorio** · macOS (Apple Silicon) | `Zer0Code-Desktop-…-mac-arm64.dmg` | Lo mismo |
 | 🪟 **Windows 10 y 11** (x64) | `Zer0Code-Setup-…-x64.exe` | El servidor, con accesos en el menú Inicio |
 | 🐧 **Debian y Ubuntu** (x64 y ARM) | `zer0code_…_amd64.deb` · `zer0code_…_arm64.deb` | El servidor y el comando `zer0code` |
 | 🍎 **macOS 12 o superior** (Apple Silicon) | `Zer0Code-…-arm64.dmg` | Zer0Code.app |
 | 🤖 **Android 8 o superior** | `Zer0Code-….apk` | La app que se conecta a tu servidor |
 
 Cada versión trae un `SHA256SUMS.txt` para comprobar que la descarga está intacta.
+
+<details>
+<summary><b>🖥️ App de escritorio</b></summary>
+
+Es una interfaz propia pensada para orquestar agentes, al estilo de [T3 Code](https://github.com/pingdotgg/t3code): hilos en la barra lateral agrupados por proyecto, línea de tiempo del trabajo del agente, tarjetas de revisión de otro modelo y un panel de cambios con el diff. Avisa con notificaciones del sistema cuando una tarea termina o pide permiso. Al abrirla elige:
+
+- **Conectar con mi servidor**: escribe la dirección de tu Zer0Code (VPS, Tailscale, tu casa). Verás las mismas conversaciones que en la web y en el móvil, en tiempo real. Es lo más cómodo si ya tienes un servidor.
+- **Usar este equipo**: la app lleva el servidor dentro y no hay que montar nada. Tus chats y cuentas se quedan en este equipo. Con **Compartir en mi red**, el móvil o otro equipo de la misma Wi-Fi entra a esos mismos chats (menú *Zer0Code → Dirección para el móvil*).
+
+En el modo local, cerrar la ventana la deja en la bandeja del sistema para que las tareas sigan; *Salir* detiene el servidor. Vincula tus cuentas desde *Zer0Code → Vincular cuentas* (Claude, ChatGPT y Gemini). Para cambiar de modo: *Zer0Code → Cambiar de servidor*.
+
+Los datos viven en `%APPDATA%\Zer0Code` (Windows), `~/Library/Application Support/Zer0Code` (macOS) o `~/.config/Zer0Code` (Linux).
+
+> [!NOTE]
+> Los instaladores no están firmados con un certificado de pago: Windows muestra «Windows protegió su PC» (*Más información → Ejecutar de todas formas*) y macOS pide *Ajustes del Sistema → Privacidad y seguridad → Abrir igualmente*. En Linux, el AppImage necesita `chmod +x`.
+</details>
 
 <details>
 <summary><b>🪟 Windows</b></summary>
@@ -102,6 +124,28 @@ La app de Android no recibe notificaciones push. Si quieres que el móvil te avi
 
 ---
 
+## 🔄 Actualizaciones
+
+Cuando publicas un release en GitHub, la **app de escritorio** y la **app de Android** avisan solas y se actualizan desde dentro. Miran el último release (que no sea prerelease) y lo comparan con su versión.
+
+| App | Cómo avisa | Cómo se actualiza |
+| :--- | :--- | :--- |
+| 🖥️ **Windows** (instalador) y **Linux** (AppImage) | Pastilla «Actualizar a vX» en la barra lateral y aviso del sistema | Descarga, verifica el SHA-256 contra `SHA256SUMS.txt`, se reemplaza y se reinicia sola |
+| 🖥️ **Linux** (.deb) y **macOS** | La misma pastilla | Descarga (también verificada) y abre el instalador del sistema |
+| 🤖 **Android** | Un diálogo al abrir la app (como mucho cada 6 horas) | Descarga el APK y abre el instalador de Android; la primera vez pide el permiso de «instalar apps desconocidas» |
+
+- Se comprueba al arrancar y cada pocas horas; también a mano en **Ajustes → Buscar actualizaciones** (escritorio, y *Zer0Code → Buscar actualizaciones* en el menú) o tocando la versión en la pantalla de servidor de Android.
+- **Omitir esta versión** la deja de ofrecer hasta que salga otra.
+- Un release recién publicado no se ofrece hasta que CI ha subido los instaladores y `SHA256SUMS.txt` (tarda unos minutos).
+- Un APK solo se instala si está firmado con la misma clave que la app instalada (lo exige Android), y la app de escritorio descarta cualquier descarga cuyo hash no coincida.
+
+**Para sacar una versión:** sube `version` en `package.json`, crea el release con el tag `vX.Y.Z` y publícalo. El workflow *Instaladores* compila todo con esa versión y lo adjunta; las apps que tengan una versión anterior la ofrecerán.
+
+> [!NOTE]
+> El servidor (web) no se actualiza por esta vía: el VPS o el PC donde corre se actualiza con `git pull` o con el instalador correspondiente. La web y el móvil (PWA) siempre muestran la versión que sirve tu servidor.
+
+---
+
 ## 🚀 Desde el código fuente
 
 Necesitas [Node.js](https://nodejs.org) 22 o superior y [pnpm](https://pnpm.io) (o npm).
@@ -132,6 +176,23 @@ Abre **http://localhost:5050** y entra con `admin` / `zer0code`. La primera vez 
 - **Dictado por voz** para escribir sin teclado.
 
 Todo se activa desde el menú de usuario → **App y notificaciones**.
+
+---
+
+<a id="orquestador"></a>
+
+## 🧑‍💻 Orquestador de agentes
+
+Un modelo desarrolla y otro lo revisa **a la vez**. Se maneja desde la **app de escritorio** (botón *Revisa …* del compositor o *Orquestador* en la barra lateral) y los ajustes se guardan en tu cuenta del servidor. La web y el móvil no cambian: siguen con sus mismos chats, y las revisiones se ven en la app de escritorio.
+
+- **Revisión en vivo.** Cuando el desarrollador deja de editar un momento, el revisor lee lo hecho (`git diff`) y deja sus comentarios en el chat, sin interrumpirlo. Hasta 3 por tarea, con un esfuerzo medio para gastar menos.
+- **Revisión final.** Al terminar, una revisión del estado final con el esfuerzo que elijas. Acaba en **Todo bien** o **Propone cambios**.
+- **Corregir solo** (opcional). Si el revisor pide cambios, el desarrollador los aplica como un turno nuevo, hasta N rondas. Si no cree que algo sea un problema, lo explica en vez de cambiarlo.
+- **El revisor solo lee.** Corre en solo lectura: no puede tocar tus archivos ni ejecutar nada que los cambie. Recuerda lo que ya señaló en rondas anteriores.
+
+**Qué modelos usa (los elige Zer0Code):** el desarrollador es el Claude por defecto del catálogo (Opus) con esfuerzo alto; el revisor, el mejor modelo de ChatGPT que publique Codex, también con esfuerzo alto. Son de **familias distintas a propósito**: los fallos de un modelo no suelen coincidir con los del otro, que es lo que hace útil una segunda opinión. Si ChatGPT no está conectado, revisa Gemini; y si tampoco, un Claude Sonnet (mejor que nada, pero con el mismo punto ciego). Nada está fijado a un id: se calcula con el catálogo vivo, así que sigue valiendo cuando salgan modelos nuevos. Puedes elegir otro revisor en los ajustes o pulsar *Usar los modelos que recomienda Zer0Code*.
+
+Conecta ChatGPT en el servidor con `codex login --device-auth` (o desde la app de escritorio: *Vincular cuentas*).
 
 ---
 
@@ -294,12 +355,15 @@ Varias personas pueden usar el mismo servidor, cada una con su cuenta. Es especi
 ```
 Zer0Code/
 ├── deploy/install-linux.sh        # Instalación desde el código como servicio systemd (+ HTTPS con Tailscale)
+├── desktop/                       # App de escritorio (Electron): Windows, macOS y Linux
 ├── packaging/                     # Instaladores: Windows (Inno Setup), .deb, .dmg y app de Android
 ├── .github/workflows/release.yml  # Compila, prueba y adjunta los instaladores a cada release
 ├── docs/screenshots/              # Capturas del README
 ├── server/
 │   ├── index.js                   # Servidor Express y WebSocket
 │   ├── claudeRunner.js            # Ejecuta Claude Code (Windows, Linux y macOS)
+│   ├── gitInfo.js                 # Rama y cambios sin guardar (panel de diff del escritorio)
+│   ├── orchestrator.js            # Orquestador: elección de modelos y revisor que trabaja a la vez
 │   ├── sessionManager.js          # Historial de conversaciones (por usuario)
 │   ├── auth.js                    # Autenticación, sesiones y usuarios
 │   ├── accessPolicy.js            # Carpetas y modos permitidos por usuario
@@ -310,12 +374,26 @@ Zer0Code/
 │   ├── usageManager.js            # Gasto por modelo, límites del plan y límite mensual
 │   └── workspaceManager.js        # Explorador de carpetas
 └── public/
+    ├── desktop/                   # Interfaz de la app de escritorio (la sirve el servidor en /desktop/)
     ├── index.html                 # Interfaz
     ├── css/style.css              # Estilos (tema claro y oscuro)
     ├── js/app.js                  # Lógica del cliente
     ├── manifest.json              # App instalable (PWA)
     └── sw.js                      # Service worker: instalación, sin conexión y notificaciones
 ```
+
+---
+
+## 🛠️ Compilar la app de escritorio
+
+```bash
+bash packaging/stage-app.sh dist/stage --no-runtime   # el servidor y los CLIs que van dentro
+cd desktop && npm ci
+npm start                                              # probar (usa el servidor del repositorio)
+npx electron-builder                                   # genera los instaladores en dist/desktop
+```
+
+Se compila en el sistema para el que se empaqueta (Claude Code trae un binario por plataforma); el workflow *Instaladores* lo hace en cada release.
 
 ---
 

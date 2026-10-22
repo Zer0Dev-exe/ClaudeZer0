@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Para abrir el instalador de Android con el APK de una actualización descargada -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- usesCleartextTraffic: para servidores en la red local por http://192.168.x.x -->
     <application

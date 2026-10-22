@@ -369,7 +369,9 @@ export function executeTask({
           args: [permissionMcpScript],
           env: {
             ZER0CODE_PERMISSION_URL: permissionBridge.url,
-            ZER0CODE_PERMISSION_SECRET: permissionBridge.secret
+            ZER0CODE_PERMISSION_SECRET: permissionBridge.secret,
+            // Con la app de escritorio el servidor corre sobre el Node de Electron
+            ...(process.env.ELECTRON_RUN_AS_NODE ? { ELECTRON_RUN_AS_NODE: process.env.ELECTRON_RUN_AS_NODE } : {})
           }
         }
       }
@@ -636,31 +638,55 @@ export function releaseProcess(owner, child) {
   if (activeProcesses.get(owner) === child) activeProcesses.delete(owner);
 }
 
+// Terminar un proceso y sus hijos
+function killProcess(proc) {
+  if (process.platform === 'win32') {
+    try {
+      execSync(`taskkill /pid ${proc.pid} /T /F`);
+    } catch (e) {
+      try {
+        proc.kill('SIGTERM');
+      } catch (err) {}
+    }
+    return;
+  }
+  // Linux / macOS: terminar el subproceso y sus hijos
+  try {
+    execSync(`kill -TERM -${proc.pid} 2>/dev/null || kill -TERM ${proc.pid} 2>/dev/null`);
+  } catch (e) {
+    try {
+      proc.kill('SIGTERM');
+    } catch (err) {}
+  }
+}
+
+// Los revisores del orquestador corren a la vez que la tarea principal, con su propia clave
+export const REVIEW_KEY_SEP = '::review::';
+export const reviewKey = (owner, chatId) => `${owner}${REVIEW_KEY_SEP}${chatId}`;
+
 /**
- * Cancelar la tarea activa de un usuario
+ * Cancelar los revisores en marcha de un usuario (o solo los de una conversación)
+ */
+export function cancelReviewers(owner, chatId = null) {
+  const prefix = chatId ? reviewKey(owner, chatId) : `${owner}${REVIEW_KEY_SEP}`;
+  let canceled = 0;
+  for (const [key, proc] of [...activeProcesses]) {
+    if (key !== prefix && !(chatId === null && key.startsWith(prefix))) continue;
+    killProcess(proc);
+    activeProcesses.delete(key);
+    canceled++;
+  }
+  return canceled;
+}
+
+/**
+ * Cancelar la tarea activa de un usuario (y los revisores que la acompañan)
  */
 export function cancelActiveTask(owner) {
+  cancelReviewers(owner);
   const proc = activeProcesses.get(owner);
   if (proc) {
-    const isWin = process.platform === 'win32';
-    if (isWin) {
-      try {
-        execSync(`taskkill /pid ${proc.pid} /T /F`);
-      } catch (e) {
-        try {
-          proc.kill('SIGTERM');
-        } catch (err) {}
-      }
-    } else {
-      // Linux / macOS: terminar el subproceso y sus hijos
-      try {
-        execSync(`kill -TERM -${proc.pid} 2>/dev/null || kill -TERM ${proc.pid} 2>/dev/null`);
-      } catch (e) {
-        try {
-          proc.kill('SIGTERM');
-        } catch (err) {}
-      }
-    }
+    killProcess(proc);
     activeProcesses.delete(owner);
     return { canceled: true };
   }
