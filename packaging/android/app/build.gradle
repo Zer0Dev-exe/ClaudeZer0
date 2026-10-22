@@ -2,7 +2,7 @@ plugins {
     id 'com.android.application'
 }
 
-// La versión llega del release (APP_VERSION=1.3.0); versionCode: 1.3.0 -> 10300
+// La versión llega del release (APP_VERSION=1.3.1); versionCode: 1.3.1 -> 10301
 def appVersion = System.getenv('APP_VERSION') ?: '0.0.0'
 def numbers = (appVersion =~ /^(\d+)\.(\d+)\.(\d+)/)
 def appVersionCode = numbers.find() ? numbers.group(1).toInteger() * 10000 + numbers.group(2).toInteger() * 100 + numbers.group(3).toInteger() : 1
