@@ -147,6 +147,13 @@ public class MainActivity extends Activity {
         hint.setGravity(Gravity.CENTER);
         column.addView(hint, matchWidth(dp(16)));
 
+        // Versión y búsqueda manual de actualizaciones (el release de GitHub más nuevo)
+        TextView version = text("Versión " + BuildConfig.VERSION_NAME + " · Buscar actualizaciones", 12, R.color.muted);
+        version.setGravity(Gravity.CENTER);
+        version.setPadding(dp(8), dp(8), dp(8), dp(8));
+        version.setOnClickListener(v -> Updater.check(this, true));
+        column.addView(version, matchWidth(dp(8)));
+
         View.OnClickListener go = v -> {
             String url = normalize(input.getText().toString());
             if (url == null) {
@@ -258,6 +265,8 @@ public class MainActivity extends Activity {
 
         root.addView(webView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         webView.loadUrl(serverUrl);
+        // ¿Hay una versión nueva de la app? (como mucho cada 6 horas)
+        Updater.check(this, false);
     }
 
     private void showError(String detail) {
@@ -360,6 +369,17 @@ public class MainActivity extends Activity {
         public void changeServer() {
             main.post(() -> showSetup(null));
         }
+
+        /** window.Zer0CodeAndroid.checkUpdates(): buscar una versión nueva de la app ahora */
+        @JavascriptInterface
+        public void checkUpdates() {
+            main.post(() -> Updater.check(MainActivity.this, true));
+        }
+
+        @JavascriptInterface
+        public String appVersion() {
+            return BuildConfig.VERSION_NAME;
+        }
     }
 
     @Override
@@ -387,6 +407,13 @@ public class MainActivity extends Activity {
     public void onBackPressed() {
         if (errorView == null && webView != null && webView.canGoBack()) webView.goBack();
         else super.onBackPressed();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Volvemos de conceder el permiso de instalar apps: seguir con la actualización descargada
+        Updater.onResume(this);
     }
 
     @Override
