@@ -2865,7 +2865,39 @@ function updateTopTitle() {
   topChatTitle.textContent = empty ? '' : (session ? session.title : '');
 }
 
+let defaultStarters = null;
+
+/** Sustituye los atajos de la pantalla de inicio por los del perfil, si los tiene. */
+function applyStarters() {
+  const box = document.querySelector('.starter-cards');
+  if (!box) return;
+  if (!defaultStarters) defaultStarters = [...box.children];
+  const starters = currentUser?.profile?.starters;
+  if (!starters?.length) {
+    box.replaceChildren(...defaultStarters);
+    return;
+  }
+  const cards = starters.map(item => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'starter-card';
+    card.dataset.prompt = item.prompt;
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+    use.setAttribute('href', `#i-${/^[a-z-]+$/.test(item.icon || '') ? item.icon : 'feather'}`);
+    icon.appendChild(use);
+    const text = document.createElement('span');
+    text.className = 'starter-text';
+    text.textContent = item.label;
+    card.append(icon, text);
+    card.addEventListener('click', () => sendPrompt(item.prompt));
+    return card;
+  });
+  box.replaceChildren(...cards);
+}
+
 function updateGreeting() {
+  applyStarters();
   const greeting = document.getElementById('greeting-text');
   if (!greeting) return;
   const name = identityProfile?.displayName || readPref('zer0code_display_name', '').trim();
@@ -2948,10 +2980,18 @@ function renderProviderUsage() {
     button.type = 'button';
     button.className = 'chip-btn';
     button.dataset.providerUsage = provider.id;
-    const usage = provider.localUsage;
-    const detail = provider.connection.loggedIn ? usage.tracked ? `${usage.responses} resp.` : 'sin datos' : 'sin conectar';
-    button.textContent = `${provider.name} · ${detail}`;
-    button.title = provider.quota.message;
+    const icon = `<svg class="chip-icon"><use href="#i-${PROVIDER_ICONS[provider.id] || 'spark'}"/></svg>`;
+    const win = provider.quota.available ? tightestWindow(provider.quota) : null;
+    if (win) {
+      const reset = formatPlanReset(win.resetsAt).replace(/^Se restablece /, '');
+      button.className = `chip-btn plan-chip ${win.percent >= PLAN_CRITICAL_PERCENT ? 'is-full' : win.percent >= PLAN_WARN_PERCENT ? 'is-warn' : ''}`;
+      button.innerHTML = `${icon}<span class="plan-chip-dot"></span>${escapeHtml(provider.name)} · ${win.key === 'session' ? 'sesión' : 'semana'} ${Math.round(win.percent)}%${reset ? `<span class="plan-chip-reset"> · ${escapeHtml(reset)}</span>` : ''}`;
+    } else {
+      const usage = provider.localUsage;
+      const detail = provider.connection.loggedIn ? usage.tracked ? `${usage.responses} resp.` : 'sin datos' : 'sin conectar';
+      button.innerHTML = `${icon}${escapeHtml(provider.name)} · ${escapeHtml(detail)}`;
+    }
+    button.title = provider.quota.message || provider.quota.scopeLabel || "";
     chips?.append(button);
   }
   const summary = document.getElementById('provider-usage-summary');
@@ -3492,6 +3532,16 @@ function tightestPlanWindow() {
     .sort((a, b) => b.percent - a.percent)[0] || null;
 }
 
+const PROVIDER_ICONS = { claude: 'spark', codex: 'openai', gemini: 'gemini' };
+
+// Ventana de cuota más apurada (sesión o semana) de un proveedor
+function tightestWindow(quota) {
+  return ['session', 'weekly']
+    .filter(key => quota[key])
+    .map(key => ({ key, ...quota[key] }))
+    .sort((a, b) => b.percent - a.percent)[0] || null;
+}
+
 function renderPlanChip() {
   const chip = document.getElementById('plan-chip');
   if (!chip) return;
@@ -3499,13 +3549,13 @@ function renderPlanChip() {
   if (!win) {
     chip.hidden = false;
     chip.className = 'chip-btn plan-chip';
-    chip.textContent = 'Claude · cuota no disponible';
+    chip.innerHTML = '<svg class="chip-icon"><use href="#i-spark"/></svg>Claude · cuota no disponible';
     return;
   }
   const label = win.key === 'session' ? 'Claude · sesión' : 'Claude · semana';
   const reset = formatPlanReset(win.resetsAt).replace(/^Se restablece /, '');
   chip.className = `chip-btn plan-chip ${win.percent >= PLAN_CRITICAL_PERCENT ? 'is-full' : win.percent >= PLAN_WARN_PERCENT ? 'is-warn' : ''}`;
-  chip.innerHTML = `<span class="plan-chip-dot"></span>${label} ${Math.round(win.percent)}%${reset ? `<span class="plan-chip-reset"> · ${escapeHtml(reset)}</span>` : ''}`;
+  chip.innerHTML = `<svg class="chip-icon"><use href="#i-spark"/></svg><span class="plan-chip-dot"></span>${label} ${Math.round(win.percent)}%${reset ? `<span class="plan-chip-reset"> · ${escapeHtml(reset)}</span>` : ''}`;
   chip.hidden = false;
 }
 

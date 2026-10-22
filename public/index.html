@@ -60,6 +60,8 @@
   <!-- Iconos reutilizables -->
   <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
     <symbol id="i-logo" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" rx="5.5" fill="currentColor"/><g fill="none" stroke="var(--logo-ink, #fff)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5.6 8.2h4.6L5.6 15.8h4.6"/><rect x="13.2" y="8.2" width="5.2" height="7.6" rx="2.6"/><path d="M14.2 14.4l3.2-4.8"/></g></symbol>
+    <symbol id="i-openai" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="8" y="2.5" width="8" height="12" rx="4"/><rect x="8" y="2.5" width="8" height="12" rx="4" transform="rotate(120 12 12)"/><rect x="8" y="2.5" width="8" height="12" rx="4" transform="rotate(240 12 12)"/></g></symbol>
+    <symbol id="i-gemini" viewBox="0 0 24 24"><path d="M12 2c0 5.5 4.5 10 10 10-5.5 0-10 4.5-10 10 0-5.5-4.5-10-10-10 5.5 0 10-4.5 10-10Z" fill="currentColor"/></symbol>
     <symbol id="i-spark" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M12 2.6v6.2M12 15.2v6.2M2.6 12h6.2M15.2 12h6.2M5.4 5.4l4.3 4.3M14.3 14.3l4.3 4.3M5.4 18.6l4.3-4.3M14.3 9.7l4.3-4.3"/><path d="M8.1 3.3l1.6 3.9M14.3 16.8l1.6 3.9M3.3 15.9l3.9-1.6M16.8 9.7l3.9-1.6M15.9 3.3l-1.6 3.9M9.7 16.8l-1.6 3.9M3.3 8.1l3.9 1.6M16.8 14.3l3.9 1.6" stroke-width="1.5"/></g></symbol>
     <symbol id="i-panel" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9.5 4v16"/></g></symbol>
     <symbol id="i-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></g></symbol>
@@ -362,9 +364,9 @@
 
           <!-- Controles bajo la caja de texto -->
           <div class="provider-usage-chips" id="provider-usage-chips" aria-label="Uso por IA">
-            <button type="button" class="chip-btn plan-chip" id="plan-chip" title="Ver uso de Claude">Claude · uso</button>
-            <button type="button" class="chip-btn" data-provider-usage="codex">ChatGPT · uso</button>
-            <button type="button" class="chip-btn" data-provider-usage="gemini">Gemini · uso</button>
+            <button type="button" class="chip-btn plan-chip" id="plan-chip" title="Ver uso de Claude"><svg class="chip-icon"><use href="#i-spark"/></svg>Claude · uso</button>
+            <button type="button" class="chip-btn" data-provider-usage="codex"><svg class="chip-icon"><use href="#i-openai"/></svg>ChatGPT · uso</button>
+            <button type="button" class="chip-btn" data-provider-usage="gemini"><svg class="chip-icon"><use href="#i-gemini"/></svg>Gemini · uso</button>
           </div>
           <div class="composer-toolbar">
             <div class="toolbar-left">

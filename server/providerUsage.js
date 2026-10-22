@@ -1,3 +1,5 @@
+import { getCodexLimits } from './codexLimits.js';
+
 const PROVIDER_ORDER = ['claude', 'codex', 'gemini'];
 
 const FALLBACK_PROVIDERS = {
@@ -186,6 +188,27 @@ export function summarizeClaudeQuota(limits, { apiKey = false, appMode = null } 
   };
 }
 
+export function summarizeCodexQuota(limits) {
+  if (!limits || limits.success !== true || (!limits.session && !limits.weekly)) return unavailableQuota('codex', limits?.message ? { code: 'quota_unreachable', message: limits.message } : undefined);
+  return {
+    available: true,
+    verified: true,
+    provider: 'codex',
+    scope: 'host-account-shared',
+    scopeLabel: `Cuota de la suscripción de ChatGPT${limits.plan ? ` (${limits.plan})` : ''} del anfitrión, según el último uso de Codex`,
+    source: 'codex-rate-limits',
+    label: 'ChatGPT',
+    fetchedAt: limits.fetchedAt || null,
+    session: limits.session || null,
+    weekly: limits.weekly || null,
+    weeklyByModel: [],
+    breakdown: [],
+    extraUsage: null,
+    reason: null,
+    message: null
+  };
+}
+
 export function summarizeConnection(provider, { providersStatus = {}, hostToken = null, apiKey = false, appMode = null } = {}) {
   if (provider === 'claude') {
     if (apiKey || appMode === 'Client') {
@@ -263,7 +286,9 @@ export async function getProviderUsage(username, { force = false, apiKey = false
       localUsage: summarizeLocalUsage(models, id, providerOf),
       quota: id === 'claude'
         ? summarizeClaudeQuota(claudeLimits, { apiKey: usingApiKey, appMode })
-        : unavailableQuota(id)
+        : id === 'codex'
+          ? summarizeCodexQuota((d.getCodexLimits || getCodexLimits)())
+          : unavailableQuota(id)
     };
   });
 

@@ -4,6 +4,7 @@ import {
   getProviderUsage,
   summarizeLocalUsage,
   summarizeClaudeQuota,
+  summarizeCodexQuota,
   summarizeConnection,
   summarizeProviderUsage,
   unavailableQuota
@@ -42,6 +43,7 @@ function makeDeps(overrides = {}) {
     getProvidersStatus: () => ({ codex: { loggedIn: true }, gemini: { loggedIn: false, backend: 'gemini' } }),
     getHostOAuthToken: () => 'tok',
     getAppMode: () => 'Subscription',
+    getCodexLimits: () => ({ success: false, message: 'sin registro' }),
     ...overrides
   };
   return { deps, calls };
@@ -227,4 +229,16 @@ test('summarizeProviderUsage: Antigravity no reutiliza un esquema de tokens no v
   });
   assert.equal(summary.metrics.available, false);
   assert.equal(summary.byModel['gemini-test'].inputTokens, 0);
+});
+
+test('summarizeCodexQuota: cuota de ChatGPT con ventanas de sesión y semana', () => {
+  const quota = summarizeCodexQuota({
+    success: true, plan: 'plus', fetchedAt: 'x',
+    session: { percent: 22, resetsAt: 'a' }, weekly: { percent: 3, resetsAt: 'b' }
+  });
+  assert.equal(quota.available, true);
+  assert.equal(quota.verified, true);
+  assert.equal(quota.session.percent, 22);
+  assert.equal(quota.weekly.percent, 3);
+  assert.equal(summarizeCodexQuota({ success: false, message: 'm' }).available, false);
 });

@@ -1955,6 +1955,14 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
+.provider-usage-chips .chip-btn { gap: 6px; }
+
+.chip-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
 .plan-chip-dot {
   width: 7px;
   height: 7px;
