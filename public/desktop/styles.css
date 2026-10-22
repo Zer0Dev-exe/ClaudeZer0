@@ -1,6 +1,9 @@
 /* Zer0Code escritorio — lenguaje visual de T3 Code (Nightly): lienzo casi negro, bordes de 6 % de blanco,
    filas compactas, asistente sin burbuja y composer redondeado. */
 
+.profile-avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.provider-usage-card { padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); margin-top: 8px; }
+
 :root {
   color-scheme: light;
   --radius: 0.625rem;
@@ -205,6 +208,7 @@ button:disabled { cursor: default; opacity: 0.5; }
 .sidebar-foot { display: flex; align-items: center; gap: 2px; padding: 8px 10px; border-top: 1px solid var(--border); }
 .sidebar-foot .grow { flex: 1; }
 .sidebar-foot .conn { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted-foreground); padding: 0 6px; }
+.sidebar-foot .profile-name { border: 0; background: transparent; cursor: pointer; }
 .conn-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); }
 .conn-dot.bad { background: var(--error); }
 .conn-dot.wait { background: var(--warning); animation: pulse 1.2s infinite; }

@@ -20,6 +20,7 @@ const write = (key, value) => localStorage.setItem(key, typeof value === 'string
 
 export const state = {
   user: null,
+  profile: null,
   conn: 'connecting',
   providers: {},
   models: [],
@@ -168,6 +169,7 @@ export async function loadStatus() {
   state.defaultModel = s.defaultModel || null;
   state.appMode = s.appMode;
   state.authInfo = s.auth;
+  loadIdentityProfile();
   if (!state.workspace) state.workspace = s.currentWorkspace || '';
   emit('status');
   emit('composer');
@@ -181,6 +183,26 @@ export async function loadSessions() {
   emit('sessions');
   // Rama y cambios de cada proyecto (para las filas del sidebar)
   for (const p of projectList().slice(0, 12)) loadGitSummary(p.dir);
+}
+
+async function loadIdentityProfile() {
+  const username = state.user?.username;
+  try {
+    const result = await api('/api/profile');
+    if (result.success && state.user?.username === username) {
+      state.profile = result.profile;
+      emit('profile');
+    }
+  } catch {}
+}
+
+export async function saveDisplayName(displayName) {
+  const username = state.user?.username;
+  const result = await api('/api/profile', { method: 'PATCH', body: { displayName } });
+  if (!result.success) throw new Error(result.error || 'No se pudo guardar el nombre visible.');
+  if (state.user?.username !== username) throw new Error('La sesión ha cambiado.');
+  state.profile = result.profile;
+  emit('profile');
 }
 
 const gitFetchedAt = new Map();
@@ -555,6 +577,7 @@ export async function verifySession() {
   if (!res) return { ok: false, offline: true };
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.success) return { ok: false };
+  if (state.user?.username !== data.user?.username) state.profile = null;
   state.user = data.user || null;
   return { ok: true, mustChangePassword: data.mustChangePassword };
 }
@@ -563,6 +586,8 @@ export async function logout() {
   await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
   socket?.close();
   auth.clear();
+  state.profile = null;
+  state.user = null;
   emit('logout');
 }
 

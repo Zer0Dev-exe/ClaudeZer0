@@ -187,7 +187,7 @@ export function executeCodexTask({
     removeTempDir(temp?.dir);
     if (code === 0 && !failure) {
       onEvent({ type: 'result', result: accumulatedText, usage, sessionId: capturedSessionId });
-      onDone({ success: true, exitCode: code, sessionId: capturedSessionId, text: accumulatedText, result: null });
+      onDone({ success: true, exitCode: code, sessionId: capturedSessionId, text: accumulatedText, result: usage ? { usage } : null });
     } else {
       onError({
         success: false,

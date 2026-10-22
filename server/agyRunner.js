@@ -179,7 +179,7 @@ export function executeAgyTask({
         exitCode: code,
         sessionId: capturedSessionId,
         text: accumulatedText,
-        result: durationMs ? { duration_ms: durationMs } : null
+        result: durationMs || usage ? { usageSource: 'antigravity', ...(durationMs ? { duration_ms: durationMs } : {}), ...(usage ? { usage } : {}) } : null
       });
     } else {
       onError({

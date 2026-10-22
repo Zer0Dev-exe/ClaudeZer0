@@ -2,11 +2,37 @@ import { h, clear, icon, providerMark, openDialog, toast, basename, timeAgo, esc
 import { api } from '../api.js';
 import {
   state, setUi, applyTheme, newThread, openSession, addProject, saveOrchestration, loadOrchestration, modelInfo, setPref, currentModelId,
-  effortLevelsFor, logout, projectList, loadStatus, updateActions, on
+  effortLevelsFor, logout, projectList, loadStatus, updateActions, on, saveDisplayName
 } from '../store.js';
 
 const short = (n) => String(n || '').replace(/^Claude\s+/i, '');
 const EFFORT_LABEL = { low: 'Bajo', medium: 'Medio', high: 'Alto', xhigh: 'Muy alto', max: 'Máximo' };
+
+export function openDisplayName() {
+  const input = h('input', { id: 'profile-display-name', class: 'input', type: 'text', maxlength: 40, value: state.profile?.displayName || state.user?.username || '', autocomplete: 'nickname' });
+  const error = h('div', { class: 'hint', role: 'alert' });
+  const save = h('button', { class: 'btn-sm btn-primary', type: 'submit' }, 'Guardar');
+  const form = h('form', null,
+    h('label', { for: 'profile-display-name' }, 'Nombre visible'), input,
+    h('p', { class: 'hint' }, 'Se guarda en tu cuenta para todos tus dispositivos. Déjalo vacío para usar el nombre automático.'),
+    error, save);
+  const dialog = openDialog({ title: 'Cambiar nombre visible', body: form, width: 400 });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    save.disabled = true;
+    try {
+      await saveDisplayName(input.value.trim());
+      dialog.close();
+      toast('Nombre visible guardado');
+    } catch (failure) {
+      error.textContent = failure.message || 'No se pudo guardar el nombre visible.';
+    } finally {
+      save.disabled = false;
+    }
+  });
+  input.focus();
+  input.select();
+}
 
 // --------------------------------------------------------------------------
 // Paleta de comandos (Ctrl K)
@@ -229,14 +255,29 @@ export async function openUsage() {
   const body = h('div', null, h('div', { class: 'hint' }, 'Cargando…'));
   openDialog({ title: 'Uso y gasto', body, width: 460 });
   try {
-    const data = await api('/api/usage');
+    const [data, providerUsage] = await Promise.all([api('/api/usage'), api('/api/usage/providers')]);
     const models = Object.entries(data.usage?.models || {}).sort((a, b) => b[1].costUSD - a[1].costUSD);
     clear(body);
-    body.append(h('div', { class: 'flow' }, h('div', { class: 'node' }, h('small', null, 'Gasto acumulado (precio de tarifa)'), h('b', null, `$${(data.usage?.totalCostUSD || 0).toFixed(2)}`))));
+    body.append(h('div', { class: 'flow' }, h('div', { class: 'node' }, h('small', null, 'Claude: referencia acumulada a tarifa API'), h('b', null, `$${(data.usage?.totalCostUSD || 0).toFixed(2)}`))));
     if (data.monthlyLimit) body.append(h('div', { class: 'hint' }, `Límite mensual: $${data.monthlyLimit.spentUSD.toFixed(2)} de $${data.monthlyLimit.limitUSD.toFixed(2)}`));
-    body.append(h('div', { class: 'hint' }, 'Con suscripción es un equivalente de referencia, no un cobro. ChatGPT y Gemini van por su propia suscripción y no se cuentan aquí.'));
+    body.append(h('div', { class: 'hint' }, 'Con suscripción, los precios de API son una referencia, no un cobro. Los tokens locales no equivalen a la cuota de una suscripción.'));
+    for (const provider of providerUsage.providers || []) {
+      const quota = provider.quota;
+      const limits = [['Sesión', quota.session], ['Semana', quota.weekly]].filter(([, value]) => value).map(([label, value]) => `${label}: ${Math.round(value.percent)}% usado`).join(' · ');
+      const usage = provider.localUsage;
+      body.append(h('section', { class: 'provider-usage-card' },
+        h('b', null, provider.name),
+        h('div', { class: 'hint' }, quota.available ? limits : quota.message),
+        quota.scopeLabel ? h('div', { class: 'hint' }, quota.scopeLabel) : null,
+        h('div', { class: 'hint' }, `Tu uso en Zer0Code: ${usage.responses} ejecuciones (incluye revisiones) · ${usage.tokensAvailable ? `${usage.totalTokens.toLocaleString()} tokens` : 'tokens no disponibles'}`),
+        usage.note ? h('div', { class: 'hint' }, usage.note) : null));
+    }
     if (!models.length) body.append(h('div', { class: 'empty-list' }, 'Todavía no hay gasto registrado'));
-    for (const [name, m] of models) body.append(h('div', { class: 'acct' }, h('div', { class: 'grow' }, name), h('span', { class: 'tabular' }, `$${m.costUSD.toFixed(2)}`)));
+    for (const [name, m] of models) {
+      const provider = modelInfo(name).provider;
+      const knownCost = provider ? provider === 'claude' : !/^(gpt|codex|gemini|o\d)/i.test(name);
+      body.append(h('div', { class: 'acct' }, h('div', { class: 'grow' }, name), h('span', { class: 'tabular', title: knownCost ? 'Referencia a tarifa API' : 'Precio no disponible' }, knownCost ? `$${m.costUSD.toFixed(2)}` : '—')));
+    }
   } catch {
     body.replaceChildren(h('div', { class: 'status-box error' }, 'No se pudo cargar el uso'));
   }

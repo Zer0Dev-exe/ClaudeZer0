@@ -249,7 +249,8 @@ Interfaz propia de Zer0Code, con icono ZØ, tonos neutros y temas claro y oscuro
 | 📂 **Proyectos** | Explorador de carpetas para elegir dónde trabaja Claude, con carpetas recientes. |
 | 📎 **Adjuntos** | Imágenes y archivos con vista previa. Son temporales: no se guardan en el historial. |
 | 🕶️ **Incógnito** | Conversaciones que no se guardan y se borran al salir. |
-| 📊 **Uso y gasto** | Límites de tu suscripción (sesión y semana) y gasto por modelo. |
+| 📊 **Uso por IA** | Claude, ChatGPT/Codex y Gemini por separado: cuota verificada cuando está disponible, respuestas y tokens registrados en Zer0Code. |
+| 👤 **Perfil compartido** | Nombre y avatar de Gravatar a partir del correo conocido, iguales en web, móvil y escritorio del mismo servidor. |
 | ⌨️ **Comandos** | Escribe `/` para ver los atajos disponibles. |
 | 🛡️ **Seguridad** | Contraseñas cifradas, cambio obligatorio en el primer acceso y cierre de sesión en todos los dispositivos. |
 | 💻 **Multiplataforma** | Windows, Linux y macOS. |
@@ -257,6 +258,14 @@ Interfaz propia de Zer0Code, con icono ZØ, tonos neutros y temas claro y oscuro
 ---
 
 <a id="servidor"></a>
+
+### Uso por proveedor y perfil automático
+
+El indicador **Claude · sesión** muestra el porcentaje usado de la suscripción de Claude, no el de ChatGPT ni Gemini. Al pulsar cualquiera de los indicadores se abre el detalle de las tres IA. La cuota de Claude pertenece a la cuenta del anfitrión y es compartida; los contadores locales por proveedor corresponden al usuario autenticado e incluyen desarrollo y revisión.
+
+Si la conexión de Codex o Gemini no proporciona una cuota verificable, se indica **no disponible**, nunca un porcentaje inventado. Sus ejecuciones y tokens se registran desde esta función, cuando el CLI informa esos tokens; cada ronda de revisión cuenta como una ejecución y el historial anterior no se reconstruye. Con Antigravity se cuentan las ejecuciones, pero no se interpretan tokens con un formato sin verificar. Los tokens locales no equivalen al porcentaje de una suscripción ni a un cargo real.
+
+El nombre y avatar se obtienen automáticamente de Gravatar cuando existe un correo propio conocido. Para el administrador se puede usar el correo de la cuenta de Claude vinculada. No es necesario repetir la configuración en cada dispositivo: todos consultan el mismo perfil del servidor. Si no hay correo o perfil público, se conserva el nombre de usuario y las iniciales; **los demás usuarios nunca heredan el correo o avatar del anfitrión**. El perfil muestra solo tu nombre, sin etiquetas de suscripción. Pulsa el nombre para cambiar el nombre visible (`displayName`): se guarda en tu cuenta y se carga en web, móvil y escritorio. Dejarlo vacío recupera el nombre automático. Los alias locales anteriores solo se usan mientras no se haya cargado el perfil global.
 
 ## 🖥️ Instalar en un servidor (SSH)
 

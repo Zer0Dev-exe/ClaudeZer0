@@ -1,7 +1,7 @@
 import { h, clear, icon, monogram, providerMark, timeAgo, basename, showPopover, closePopover, menuItem } from '../dom.js';
 import { state, on, setUi, newThread, openSession, deleteSession, togglePin, sessionStatus, projectList, loadSessions, updateActions } from '../store.js';
 import { skySvg } from './sky.js';
-import { openPalette, openSettings, openOrchestrator, openUsage, openFolderPicker } from './dialogs.js';
+import { openPalette, openSettings, openOrchestrator, openUsage, openFolderPicker, openDisplayName } from './dialogs.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -10,7 +10,7 @@ export function mountSidebar(root) {
     clear(root);
     root.append(...[head(), top(), list(), updatePill(), foot()].filter(Boolean));
   };
-  for (const ev of ['sessions', 'thread', 'git', 'conn', 'perms', 'running', 'orch', 'update']) on(ev, render);
+  for (const ev of ['sessions', 'thread', 'git', 'conn', 'perms', 'running', 'orch', 'update', 'profile']) on(ev, render);
   on('ui', () => { /* el filtro y la sección «resueltos» cambian la lista */ render(); });
   setInterval(() => { if (!document.hidden) render(); }, 60000);
   render();
@@ -132,10 +132,12 @@ function updatePill() {
 
 function foot() {
   const conn = { open: ['', 'Conectado'], connecting: ['wait', 'Conectando…'], closed: ['bad', 'Sin conexión'], unauthorized: ['bad', 'Sesión cerrada'] }[state.conn] || ['wait', ''];
+  const name = state.profile?.displayName || state.user?.username || '';
+  const avatar = state.profile?.avatarUrl ? h('img', { class: 'profile-avatar', src: state.profile.avatarUrl, alt: '', referrerpolicy: 'no-referrer', onerror: event => event.currentTarget.remove() }) : null;
   return h('div', { class: 'sidebar-foot' },
     h('button', { class: 'icon-btn', type: 'button', title: 'Ajustes', onclick: openSettings }, icon('settings')),
     h('button', { class: 'icon-btn', type: 'button', title: 'Orquestador de agentes', onclick: openOrchestrator }, icon('orch')),
     h('button', { class: 'icon-btn', type: 'button', title: 'Uso y gasto', onclick: openUsage }, icon('chart')),
     h('span', { class: 'grow' }),
-    h('span', { class: 'conn', title: conn[1] }, h('span', { class: `conn-dot ${conn[0]}` }), state.user?.username || ''));
+    h('button', { class: 'conn profile-name truncate', type: 'button', title: 'Cambiar nombre visible', onclick: openDisplayName }, h('span', { class: `conn-dot ${conn[0]}`, title: conn[1] }), avatar, name));
 }

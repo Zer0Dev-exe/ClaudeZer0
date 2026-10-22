@@ -215,15 +215,15 @@
 
       <div class="sidebar-bottom">
         <div class="custom-dropdown user-dropdown" id="dropdown-user">
-          <button type="button" class="user-pill" id="btn-sidebar-user-pill" aria-haspopup="menu" aria-expanded="false">
+          <div class="user-pill">
             <span class="user-avatar" id="user-avatar-letter">A</span>
-            <span class="user-details">
+            <button type="button" class="user-details" id="btn-edit-display-name" title="Cambiar nombre visible">
               <span class="user-name" id="user-display-name">admin</span>
-              <span class="user-plan-sep">·</span>
-              <span class="user-plan" id="user-plan-label">Pro</span>
-            </span>
-            <svg class="chevron-icon"><use href="#i-chevron-down"/></svg>
-          </button>
+            </button>
+            <button type="button" class="user-menu-toggle" id="btn-sidebar-user-pill" aria-label="Opciones de cuenta" aria-haspopup="menu" aria-expanded="false">
+              <svg class="chevron-icon"><use href="#i-chevron-down"/></svg>
+            </button>
+          </div>
 
           <div class="dropdown-menu user-menu" id="menu-user" role="menu">
             <div class="user-menu-email" id="user-menu-email"></div>
@@ -361,6 +361,11 @@
           </div>
 
           <!-- Controles bajo la caja de texto -->
+          <div class="provider-usage-chips" id="provider-usage-chips" aria-label="Uso por IA">
+            <button type="button" class="chip-btn plan-chip" id="plan-chip" title="Ver uso de Claude">Claude · uso</button>
+            <button type="button" class="chip-btn" data-provider-usage="codex">ChatGPT · uso</button>
+            <button type="button" class="chip-btn" data-provider-usage="gemini">Gemini · uso</button>
+          </div>
           <div class="composer-toolbar">
             <div class="toolbar-left">
               <div class="custom-dropdown" id="dropdown-project">
@@ -402,8 +407,6 @@
             </div>
 
             <div class="toolbar-right">
-              <!-- Aviso de límite del plan (solo a partir del 80 %) -->
-              <button type="button" class="chip-btn plan-chip" id="plan-chip" title="Ver uso del plan" hidden></button>
 
               <!-- Selector de modelo + esfuerzo -->
               <div class="custom-dropdown" id="dropdown-model">
@@ -729,7 +732,7 @@
         <section class="pz-section">
           <label class="pz-label" for="pz-name">¿Cómo quieres que te llame?</label>
           <input type="text" id="pz-name" class="pz-input" placeholder="Tu nombre" maxlength="40" autocomplete="off">
-          <p class="pz-hint">Aparece en el saludo de la pantalla de inicio y en tu perfil.</p>
+          <p class="pz-hint">Se guarda en tu cuenta para todos tus dispositivos. Déjalo vacío para usar el nombre automático.</p>
         </section>
 
         <section class="pz-section">
@@ -787,6 +790,7 @@
       </div>
 
       <div class="modal-body">
+        <section class="provider-usage-summary" id="provider-usage-summary" aria-label="Uso por IA"></section>
         <section class="plan-limits" id="plan-limits" hidden></section>
         <div class="usage-body" id="usage-body">
           <div class="usage-empty">Cargando…</div>
@@ -794,7 +798,7 @@
       </div>
 
       <div class="modal-bottom">
-        <button class="btn-text" id="btn-reset-usage">Poner a cero</button>
+        <button class="btn-text" id="btn-reset-usage" title="No reinicia las cuotas de suscripción">Reiniciar contadores locales</button>
         <button class="btn-primary-terracotta" id="btn-done-usage">Cerrar</button>
       </div>
     </div>

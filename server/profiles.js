@@ -28,3 +28,24 @@ export function getProfilePrompt(username) {
   const prompt = getProfile(username)?.systemPrompt;
   return typeof prompt === 'string' ? prompt.trim() : '';
 }
+
+export function getProfileIdentity(username) {
+  const profile = getProfile(username);
+  return profile ? { email: profile.email, displayName: profile.displayName } : null;
+}
+
+export function setProfileDisplayName(username, displayName) {
+  if (typeof displayName !== 'string') throw new TypeError('El nombre visible debe ser texto.');
+  const name = displayName.trim();
+  if (name.length > 40 || /[\u0000-\u001f\u007f]/.test(name)) throw new RangeError('Usa un nombre de hasta 40 caracteres sin caracteres de control.');
+  const profiles = fs.existsSync(profilesPath) ? JSON.parse(fs.readFileSync(profilesPath, 'utf8')) : {};
+  if (!profiles || typeof profiles !== 'object' || Array.isArray(profiles)) throw new Error('El archivo de perfiles no es válido.');
+  const previous = Object.hasOwn(profiles, username) ? profiles[username] : {};
+  const profile = { ...previous, displayName: name };
+  const updated = { ...profiles, [username]: profile };
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const temporaryPath = `${profilesPath}.${process.pid}.tmp`;
+  fs.writeFileSync(temporaryPath, JSON.stringify(updated, null, 2), { mode: 0o600 });
+  fs.renameSync(temporaryPath, profilesPath);
+  return { email: profile.email, displayName: profile.displayName };
+}

@@ -156,7 +156,7 @@ export function executeGeminiTask({
         exitCode: code,
         sessionId: capturedSessionId,
         text: accumulatedText,
-        result: stats?.duration_ms ? { duration_ms: stats.duration_ms } : null
+        result: stats ? { ...(stats.duration_ms ? { duration_ms: stats.duration_ms } : {}), usage: stats } : null
       });
     } else {
       onError({

@@ -6,6 +6,8 @@ let authToken = localStorage.getItem('zer0code_token') || null;
 let currentUsername = localStorage.getItem('zer0code_user') || 'admin';
 // Rol, modos y carpetas permitidas del usuario (los envía el servidor)
 let currentUser = null;
+let identityProfile = null;
+let providerUsageData = null;
 let ws = null;
 let currentWorkspace = '';
 let activeSessionId = null;
@@ -213,7 +215,6 @@ let serverAuthInfo = null;
 const btnModeIndicator = document.getElementById('btn-mode-indicator');
 const modePillDot = document.getElementById('mode-pill-dot');
 const modePillText = document.getElementById('mode-pill-text');
-const userPlanLabel = document.getElementById('user-plan-label');
 const btnSidebarKey = document.getElementById('btn-sidebar-key');
 const btnSidebarUserPill = document.getElementById('btn-sidebar-user-pill');
 
@@ -264,6 +265,7 @@ async function checkAuth() {
 let pendingLoginPassword = null;
 
 function setCurrentUsername(name) {
+  if (name !== currentUsername) identityProfile = null;
   currentUsername = name;
   localStorage.setItem('zer0code_user', name);
 }
@@ -271,6 +273,8 @@ function setCurrentUsername(name) {
 function clearAuthToken() {
   localStorage.removeItem('zer0code_token');
   authToken = null;
+  identityProfile = null;
+  providerUsageData = null;
 }
 
 function showLogin() {
@@ -418,6 +422,8 @@ async function authFetch(url, options = {}) {
 // 2. Inicialización de la Aplicación
 // ==========================================================================
 function initApp() {
+  loadGlobalProfile();
+  loadProviderUsage();
   initModelAndMode();
   loadModels().then(syncModelsSilently);
   connectWebSocket();
@@ -554,9 +560,6 @@ async function syncModelsSilently() {
 
 function updateModeUI() {
   if (appMode === 'Client') {
-    if (userPlanLabel) {
-      userPlanLabel.textContent = clientApiKey ? 'Clave propia' : 'Sin clave';
-    }
     if (btnModeIndicator && modePillText && modePillDot) {
       if (clientApiKey) {
         btnModeIndicator.className = 'mode-pill-btn client-ready';
@@ -576,23 +579,6 @@ function updateModeUI() {
   } else {
     // Hoster mode
     const isHostLoggedIn = serverAuthInfo && serverAuthInfo.loggedIn;
-    const planName = serverAuthInfo && serverAuthInfo.subscriptionType
-      ? serverAuthInfo.subscriptionType.charAt(0).toUpperCase() + serverAuthInfo.subscriptionType.slice(1).toLowerCase()
-      : (isHostLoggedIn ? 'Conectado' : 'Sin cuenta');
-
-    if (userPlanLabel) {
-      userPlanLabel.textContent = clientApiKey
-        ? 'Clave propia'
-        : (isHostLoggedIn ? planName : 'Sin cuenta');
-    }
-
-    const userPill = document.getElementById('btn-sidebar-user-pill');
-    if (userPill) {
-      userPill.title = isHostLoggedIn
-        ? `Modo Hoster activo: ${serverAuthInfo.email || 'Cuenta compartida'}`
-        : 'Modo Hoster: Cuenta no vinculada (ejecuta pnpm auth:login)';
-    }
-
     if (btnModeIndicator && modePillText && modePillDot) {
       if (isHostLoggedIn || clientApiKey) {
         btnModeIndicator.className = 'mode-pill-btn hoster';
@@ -1736,6 +1722,7 @@ function handleWsMessage(data) {
       setRunning(false);
       currentAssistantElement = null;
       loadSessions();
+      loadProviderUsage();
       break;
 
     case 'task_error':
@@ -2881,7 +2868,7 @@ function updateTopTitle() {
 function updateGreeting() {
   const greeting = document.getElementById('greeting-text');
   if (!greeting) return;
-  const name = readPref('zer0code_display_name', '').trim();
+  const name = identityProfile?.displayName || readPref('zer0code_display_name', '').trim();
   if (incognitoMode) {
     greeting.textContent = 'Chat incógnito';
   } else {
@@ -2899,14 +2886,84 @@ function defaultGreeting(name) {
 }
 
 function updateUserIdentity() {
-  const name = readPref('zer0code_display_name', '').trim() || currentUsername || 'Usuario';
+  const name = identityProfile?.displayName || readPref('zer0code_display_name', '').trim() || currentUsername || 'Usuario';
   if (userDisplayName) userDisplayName.textContent = name;
   if (userAvatarLetter) {
     const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w.charAt(0)).join('');
-    userAvatarLetter.textContent = (initials || 'U').toUpperCase();
+    const avatarUrl = identityProfile?.avatarUrl || '';
+    const avatarKey = `${currentUsername}:${avatarUrl}`;
+    if (userAvatarLetter.dataset.avatarKey !== avatarKey) {
+      userAvatarLetter.dataset.avatarKey = avatarKey;
+      userAvatarLetter.textContent = (initials || 'U').toUpperCase();
+      if (avatarUrl) {
+        const avatar = new Image();
+        avatar.alt = '';
+        avatar.referrerPolicy = 'no-referrer';
+        avatar.onload = () => { if (userAvatarLetter.dataset.avatarKey === avatarKey) userAvatarLetter.replaceChildren(avatar); };
+        avatar.src = avatarUrl;
+      }
+    } else if (!userAvatarLetter.querySelector('img')) {
+      userAvatarLetter.textContent = (initials || 'U').toUpperCase();
+    }
   }
   const email = document.getElementById('user-menu-email');
-  if (email) email.textContent = serverAuthInfo && serverAuthInfo.email ? serverAuthInfo.email : '';
+  if (email) email.textContent = identityProfile?.email || '';
+}
+
+async function loadGlobalProfile() {
+  const username = currentUsername;
+  try {
+    const response = await authFetch('/api/profile');
+    const data = await response.json();
+    if (data.success && currentUsername === username && authToken) {
+      identityProfile = data.profile;
+      updateUserIdentity();
+      updateGreeting();
+    }
+  } catch {}
+}
+
+async function loadProviderUsage(force = false) {
+  const username = currentUsername;
+  try {
+    const response = await authFetch(`/api/usage/providers${force ? '?refresh=1' : ''}`, {
+      headers: clientApiKey ? { 'x-claude-api-key': 'present' } : {}
+    });
+    const data = await response.json();
+    if (!data.success || currentUsername !== username || !authToken) return;
+    providerUsageData = data;
+    renderProviderUsage();
+  } catch {
+    const summary = document.getElementById('provider-usage-summary');
+    if (summary) summary.textContent = 'No se pudo consultar el uso por IA.';
+  }
+}
+
+function renderProviderUsage() {
+  const providers = providerUsageData?.providers || [];
+  const chips = document.getElementById('provider-usage-chips');
+  chips?.querySelectorAll('[data-provider-usage]').forEach(button => button.remove());
+  for (const provider of providers.filter(provider => provider.id !== 'claude')) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'chip-btn';
+    button.dataset.providerUsage = provider.id;
+    const usage = provider.localUsage;
+    const detail = provider.connection.loggedIn ? usage.tracked ? `${usage.responses} resp.` : 'sin datos' : 'sin conectar';
+    button.textContent = `${provider.name} · ${detail}`;
+    button.title = provider.quota.message;
+    chips?.append(button);
+  }
+  const summary = document.getElementById('provider-usage-summary');
+  if (!summary) return;
+  summary.innerHTML = providers.map(provider => {
+    const usage = provider.localUsage;
+    const quota = provider.quota;
+    const windows = [['Sesión', quota.session], ['Semana', quota.weekly]].filter(([, value]) => value);
+    const limits = quota.available ? windows.map(([label, value]) => `<div>${label}: <strong>${Math.round(value.percent)}% usado</strong> · ${escapeHtml(formatPlanReset(value.resetsAt))}</div>`).join('') : escapeHtml(quota.message);
+    const tokens = usage.tokensAvailable ? `${formatTokens(usage.totalTokens)} tokens` : 'tokens no disponibles';
+    return `<article class="provider-usage-card"><h4>${escapeHtml(provider.name)} <small>${escapeHtml(provider.cli)}</small></h4><p>${limits}</p>${quota.scopeLabel ? `<p>${escapeHtml(quota.scopeLabel)}</p>` : ''}<p>Tu uso en Zer0Code: ${usage.responses} ejecuciones (incluye revisiones) · ${tokens}</p>${usage.note ? `<p>${escapeHtml(usage.note)}</p>` : ''}</article>`;
+  }).join('');
 }
 
 // --- Incógnito --------------------------------------------------------------
@@ -2981,7 +3038,7 @@ function openPersonalizeModal() {
     accent: readPref('zer0code_accent', 'zero'),
     font: readPref('zer0code_chat_font', 'sans')
   };
-  document.getElementById('pz-name').value = readPref('zer0code_display_name', '');
+  document.getElementById('pz-name').value = identityProfile?.displayName || readPref('zer0code_display_name', '');
   document.getElementById('pz-instructions').value = readPref('zer0code_custom_instructions', '');
   applyTheme(personalizeSnapshot.theme, { persist: false });
   applyAccent(personalizeSnapshot.accent, { persist: false });
@@ -3002,12 +3059,30 @@ function closePersonalizeModal({ revert = true } = {}) {
   modal.style.display = 'none';
 }
 
-function savePersonalization() {
+async function savePersonalization() {
   const pick = (groupId, fallback) => {
     const active = document.querySelector(`#${groupId} button.active`);
     return active ? active.dataset.value : fallback;
   };
-  writePref('zer0code_display_name', document.getElementById('pz-name').value.trim());
+  const saveButton = document.getElementById('btn-save-personalize');
+  const username = currentUsername;
+  saveButton.disabled = true;
+  try {
+    const response = await authFetch('/api/profile', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: document.getElementById('pz-name').value.trim() })
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) throw new Error(result.error || 'No se pudo guardar el nombre visible.');
+    if (currentUsername !== username || !authToken) return;
+    identityProfile = result.profile;
+    writePref('zer0code_display_name', '');
+  } catch (error) {
+    showToast(error.message || 'No se pudo guardar el nombre visible.');
+    return;
+  } finally {
+    saveButton.disabled = false;
+  }
   writePref('zer0code_custom_instructions', document.getElementById('pz-instructions').value.trim());
   applyTheme(pick('pz-theme', 'light'));
   applyAccent(pick('pz-accent', 'zero'));
@@ -3237,11 +3312,12 @@ async function openUsageModal() {
   const modal = document.getElementById('usage-modal');
   const resetBtn = document.getElementById('btn-reset-usage');
   if (resetBtn) {
-    resetBtn.textContent = 'Poner a cero';
+    resetBtn.textContent = 'Reiniciar contadores locales';
     delete resetBtn.dataset.confirm;
   }
   modal.style.display = 'flex';
   loadPlanLimits();
+  loadProviderUsage();
   try {
     const res = await authFetch('/api/usage');
     const data = await res.json();
@@ -3267,6 +3343,7 @@ function renderUsage(usage, pricing, monthlyLimit = null) {
 
   const tableRows = rows.map(([id, u]) => {
     const info = getModelInfo(id);
+    const knownCost = info.provider ? info.provider === 'claude' : !/^(gpt|codex|gemini|o\d)/i.test(id);
     const tokens = u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens;
     const multiplier = costMultiplier(info);
     return `
@@ -3278,7 +3355,7 @@ function renderUsage(usage, pricing, monthlyLimit = null) {
         </td>
         <td>${u.responses}</td>
         <td title="Entrada ${formatTokens(u.inputTokens)} · Salida ${formatTokens(u.outputTokens)} · Caché ${formatTokens(u.cacheReadTokens + u.cacheWriteTokens)}">${formatTokens(tokens)}</td>
-        <td class="${isSubscriptionBilling() ? 'usage-ref' : ''}">${formatUsd(u.costUSD)}</td>
+        <td class="${isSubscriptionBilling() ? 'usage-ref' : ''}">${knownCost ? formatUsd(u.costUSD) : '—'}</td>
       </tr>`;
   }).join('');
 
@@ -3286,12 +3363,8 @@ function renderUsage(usage, pricing, monthlyLimit = null) {
   const totalTokens = rows.reduce((s, [, u]) => s + u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens, 0);
   const pricingNote = pricingDate ? ` Tarifas oficiales actualizadas el ${escapeHtml(pricingDate)}.` : '';
   const note = subscription
-    ? `<strong>Estás usando tu suscripción ${escapeHtml(planLabel())}, no la API</strong>: no hay ninguna clave de API configurada,
-       así que no se te cobra por tokens. Cada mensaje gasta tu límite de uso del plan, igual que en claude.ai.
-       La columna «Equiv. API» es solo una referencia de lo que costaría en la API, y el multiplicador (×) indica
-       qué modelos gastan el límite más deprisa.${pricingNote}`
-    : `Estás usando una clave de API: estos importes se facturan a esa cuenta. Los calcula Claude Code a precio de tarifa.
-       El multiplicador (×) compara el precio de salida de cada modelo con el del más barato.${pricingNote}`;
+    ? `<strong>Claude usa la suscripción ${escapeHtml(planLabel())}</strong>. La columna «Equiv. API» de Claude es una referencia de tarifa, no un cobro de la suscripción. ChatGPT y Gemini usan sus propias cuentas: «—» significa precio no disponible. Los tokens locales no son el porcentaje de una cuota.${pricingNote}`
+    : `Los importes de Claude con clave de API son estimaciones a precio de tarifa. No incluyen los cargos de ChatGPT ni Gemini: «—» significa precio no disponible.${pricingNote}`;
 
   const limitHtml = monthlyLimit
     ? `<div class="usage-limit${monthlyLimit.reached ? ' is-reached' : ''}">
@@ -3310,7 +3383,7 @@ function renderUsage(usage, pricing, monthlyLimit = null) {
     <div class="usage-table-wrap">
       ${rows.length ? `
         <table class="usage-table">
-          <thead><tr><th>Modelo</th><th>Respuestas</th><th>Tokens</th><th>${subscription ? 'Equiv. API' : 'Coste'}</th></tr></thead>
+          <thead><tr><th>Modelo</th><th title="Incluye desarrollo y rondas de revisión">Ejecuciones</th><th>Tokens</th><th>${subscription ? 'Equiv. API' : 'Coste'}</th></tr></thead>
           <tbody>${tableRows}</tbody>
         </table>` : '<div class="usage-empty">Todavía no hay respuestas registradas</div>'}
     </div>
@@ -3423,13 +3496,15 @@ function renderPlanChip() {
   const chip = document.getElementById('plan-chip');
   if (!chip) return;
   const win = tightestPlanWindow();
-  if (!win || win.percent < PLAN_WARN_PERCENT) {
-    chip.hidden = true;
+  if (!win) {
+    chip.hidden = false;
+    chip.className = 'chip-btn plan-chip';
+    chip.textContent = 'Claude · cuota no disponible';
     return;
   }
-  const label = win.key === 'session' ? 'Sesión' : 'Semana';
+  const label = win.key === 'session' ? 'Claude · sesión' : 'Claude · semana';
   const reset = formatPlanReset(win.resetsAt).replace(/^Se restablece /, '');
-  chip.className = `chip-btn plan-chip ${win.percent >= PLAN_CRITICAL_PERCENT ? 'is-full' : 'is-warn'}`;
+  chip.className = `chip-btn plan-chip ${win.percent >= PLAN_CRITICAL_PERCENT ? 'is-full' : win.percent >= PLAN_WARN_PERCENT ? 'is-warn' : ''}`;
   chip.innerHTML = `<span class="plan-chip-dot"></span>${label} ${Math.round(win.percent)}%${reset ? `<span class="plan-chip-reset"> · ${escapeHtml(reset)}</span>` : ''}`;
   chip.hidden = false;
 }
@@ -3573,7 +3648,7 @@ function renderPlanLimits() {
 
   const head = `
     <div class="plan-limits-head">
-      <span class="plan-limits-title">Límites de uso del plan</span>
+      <span class="plan-limits-title">Límites del plan de Claude</span>
       <span class="plan-limits-plan">${escapeHtml(planLabel())}</span>
     </div>`;
 
@@ -3633,7 +3708,7 @@ function renderPlanMini() {
       <span class="plan-row-value">${Math.round(win.percent)}%</span>
       ${planMeterHtml(win.percent)}
     </span>`;
-  mini.innerHTML = (data.session ? row('Sesión actual', data.session) : '') + (data.weekly ? row('Semana', data.weekly) : '');
+  mini.innerHTML = (data.session ? row('Claude · sesión', data.session) : '') + (data.weekly ? row('Claude · semana', data.weekly) : '');
   mini.hidden = false;
 }
 
@@ -3645,11 +3720,12 @@ async function handleResetUsage() {
     return;
   }
   delete btn.dataset.confirm;
-  btn.textContent = 'Poner a cero';
+  btn.textContent = 'Reiniciar contadores locales';
   try {
     const res = await authFetch('/api/usage/reset', { method: 'POST' });
     const data = await res.json();
     renderUsage(data.usage, null);
+    loadProviderUsage();
     showToast('Contador de gasto reiniciado');
   } catch (err) {
     showToast('No se pudo reiniciar el contador');
@@ -3749,8 +3825,12 @@ function setupShell() {
   });
 
   bindDropdown('dropdown-user', 'btn-sidebar-user-pill', () => loadPlanLimits());
+  document.getElementById('btn-edit-display-name')?.addEventListener('click', openPersonalizeModal);
   document.getElementById('user-plan-limits')?.addEventListener('click', openUsageModal);
   document.getElementById('plan-chip')?.addEventListener('click', openUsageModal);
+  document.getElementById('provider-usage-chips')?.addEventListener('click', event => {
+    if (event.target.closest('[data-provider-usage]')) openUsageModal();
+  });
   document.getElementById('plan-alert')?.addEventListener('click', handlePlanAlertClick);
   document.getElementById('btn-user-security')?.addEventListener('click', openSecurityModal);
   document.getElementById('btn-user-admin')?.addEventListener('click', openUsersModal);
@@ -3772,7 +3852,7 @@ function setupShell() {
   document.getElementById('security-password-form')?.addEventListener('submit', handleSecurityPasswordSubmit);
   document.getElementById('btn-logout-all')?.addEventListener('click', handleLogoutAll);
   document.getElementById('plan-limits')?.addEventListener('click', (e) => {
-    if (e.target.closest('.plan-refresh')) loadPlanLimits(true);
+    if (e.target.closest('.plan-refresh')) { loadPlanLimits(true); loadProviderUsage(true); }
   });
   document.getElementById('btn-user-personalize')?.addEventListener('click', openPersonalizeModal);
   document.getElementById('btn-user-key')?.addEventListener('click', openKeyModal);

@@ -17,7 +17,10 @@ import {
   forgetUserWorkspace
 } from './workspaceManager.js';
 
-import { getPublicProfile, getProfilePrompt } from './profiles.js';
+import { getPublicProfile, getProfilePrompt, getProfileIdentity, setProfileDisplayName } from './profiles.js';
+import { resolveIdentityProfile } from './identityProfile.js';
+import { getIdentityAccount } from './identityAccount.js';
+import { getProviderUsage, summarizeProviderUsage } from './providerUsage.js';
 import { getPushPublicKey, addSubscription, removeSubscription, forgetUserPush, notifyUser } from './pushManager.js';
 
 import { isRestricted, isPathAllowed, isModeAllowed, toolPathViolation } from './accessPolicy.js';
@@ -343,6 +346,32 @@ app.get('/api/auth/verify', (req, res) => {
   } else {
     res.status(401).json({ success: false });
   }
+});
+
+app.get('/api/profile', requireAuth, async (req, res) => {
+  const account = await getIdentityAccount(req.user, getAppMode());
+  const profile = await resolveIdentityProfile(req.user, { account, configured: getProfileIdentity(req.user.username) });
+  res.json({ success: true, profile });
+});
+
+app.get('/api/usage/providers', requireAuth, async (req, res) => {
+  res.json(await getProviderUsage(req.user.username, {
+    force: req.query.refresh === '1',
+    apiKey: getAppMode() === 'Client' || !!req.headers['x-claude-api-key']
+  }));
+});
+
+app.patch('/api/profile', requireAuth, async (req, res) => {
+  let configured;
+  try {
+    configured = setProfileDisplayName(req.user.username, req.body?.displayName);
+  } catch (error) {
+    if (error instanceof TypeError || error instanceof RangeError) return res.status(400).json({ success: false, error: error.message });
+    throw error;
+  }
+  const account = await getIdentityAccount(req.user, getAppMode());
+  const profile = await resolveIdentityProfile(req.user, { account, configured });
+  res.json({ success: true, profile });
 });
 
 app.post('/api/auth/change-password', requireAuthAllowDefault, (req, res) => {
@@ -854,6 +883,8 @@ function startTurn(user, params) {
                 if (reviewerClaude) {
                   const cost = summarizeResultCost(result.result);
                   if (cost) recordUsage(cost, owner, { hostAccount: !usingOwnKey });
+                } else {
+                  recordUsage(summarizeProviderUsage(reviewer.provider, reviewer.model, result), owner, { hostAccount: false });
                 }
                 opts.onDone(result);
               },
@@ -912,6 +943,10 @@ function startTurn(user, params) {
     if (cost) {
       assistantMsg.cost = cost;
       recordUsage(cost, owner, { hostAccount: !usingOwnKey });
+    }
+
+    if (provider !== 'claude') {
+      recordUsage(summarizeProviderUsage(provider, modelId, result), owner, { hostAccount: false });
     }
 
     if (result.sessionId) {

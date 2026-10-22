@@ -682,6 +682,15 @@ kbd {
   letter-spacing: 0.02em;
 }
 
+.user-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.provider-usage-chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 4px 0; }
+.provider-usage-chips .chip-btn { font-size: 0.75rem; }
+.provider-usage-summary { display: grid; gap: 10px; margin-bottom: 16px; }
+.provider-usage-card { padding: 12px; border: 1px solid var(--border); border-radius: 12px; }
+.provider-usage-card h4 { margin: 0 0 8px; }
+.provider-usage-card small, .provider-usage-card p { color: var(--text-2); font-size: 0.8rem; }
+.provider-usage-card p { margin: 6px 0; }
+
 .user-details {
   flex: 1;
   min-width: 0;
@@ -690,20 +699,20 @@ kbd {
   gap: 5px;
   overflow: hidden;
   white-space: nowrap;
+  border: none;
+  background: transparent;
+  padding: 4px 0;
+  text-align: left;
+  cursor: pointer;
 }
+
+.user-menu-toggle { display: inline-flex; padding: 6px; border: none; background: transparent; cursor: pointer; }
 
 .user-name {
   font-size: 0.875rem;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.user-plan-sep,
-.user-plan {
-  font-size: 0.74rem;
-  color: var(--muted);
-  flex-shrink: 0;
 }
 
 .user-pill .chevron-icon {

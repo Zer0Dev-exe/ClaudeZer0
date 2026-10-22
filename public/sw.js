@@ -1,6 +1,6 @@
 // Service worker de Zer0Code: hace la web instalable como app, la abre aunque no haya red
 // (con aviso de «sin conexión») y muestra las notificaciones push del servidor.
-const CACHE = 'zer0code-v6';
+const CACHE = 'zer0code-v8';
 const SHELL = [
   '/',
   '/css/style.css',
