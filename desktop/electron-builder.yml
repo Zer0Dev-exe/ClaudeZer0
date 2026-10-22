@@ -1,0 +1,52 @@
+# Empaquetado de la app de escritorio (Windows, macOS y Linux).
+# El servidor y Claude Code/Codex/Gemini van dentro (resources/app-server): after-pack.js copia lo que
+# prepara antes `bash packaging/stage-app.sh dist/stage --no-runtime`
+# Compilar en el mismo sistema para el que se empaqueta: Claude Code trae un binario nativo por plataforma.
+appId: es.zer0dev.zer0code
+productName: Zer0Code
+copyright: Copyright © Zer0Dev-exe
+directories:
+  output: ../dist/desktop
+  buildResources: build
+files:
+  - main.js
+  - preload.js
+  - connect.html
+  - updater.js
+  - updateLogic.js
+  - package.json
+  - build/icon.png
+afterPack: after-pack.js
+asar: true
+artifactName: Zer0Code-Desktop-${version}-${os}-${arch}.${ext}
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Development
+  icon: build/icon.png
+  maintainer: Zer0Dev-exe <igorlizaso16@gmail.com>
+  synopsis: Claude desarrolla y ChatGPT revisa, desde tu escritorio
+
+mac:
+  target:
+    - dmg
+  category: public.app-category.developer-tools
+  icon: build/icon.png
+  # Sin certificado de pago: firma ad hoc (en Apple Silicon todo el código debe ir firmado)
+  identity: "-"
+  # Con firma ad hoc el runtime reforzado impide cargar las bibliotecas de Electron (validación de bibliotecas)
+  hardenedRuntime: false
+  gatekeeperAssess: false
+
+win:
+  target:
+    - nsis
+  icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false

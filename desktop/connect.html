@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:">
+  <title>Zer0Code</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #fcfcfc; --surface: #ffffff; --border: #e4e4e7; --text: #18181b; --muted: #71717a;
+      --accent: #5b5bf6; --accent-contrast: #ffffff; --danger: #dc3c3c; --hover: #f4f4f5;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0a0a0a; --surface: #101010; --border: #1f1f1f; --text: #fafafa; --muted: #a1a1aa; --accent: #7676ff; --hover: #1a1a1d; }
+    }
+    * { box-sizing: border-box; }
+    .dragbar { position: fixed; inset: 0 0 auto 0; height: 52px; -webkit-app-region: drag; }
+    button, input, label { -webkit-app-region: no-drag; }
+    body {
+      margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 28px;
+      background: var(--bg); color: var(--text);
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main { width: min(760px, 100%); }
+    h1 { margin: 0 0 6px; font-size: 1.7rem; letter-spacing: -0.02em; }
+    .lead { margin: 0 0 24px; color: var(--muted); }
+    .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 640px) { .cards { grid-template-columns: 1fr; } }
+    .card {
+      display: flex; flex-direction: column; gap: 10px; padding: 20px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    }
+    .card h2 { margin: 0; font-size: 1.05rem; }
+    .card p { margin: 0; color: var(--muted); font-size: 0.88rem; }
+    .spacer { flex: 1; }
+    label.check { display: flex; gap: 10px; align-items: flex-start; font-size: 0.86rem; cursor: pointer; }
+    label.check small { display: block; color: var(--muted); }
+    input[type=text] {
+      width: 100%; padding: 10px 12px; font: inherit; color: var(--text);
+      background: var(--bg); border: 1px solid var(--border); border-radius: 9px;
+    }
+    input[type=text]:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); border-color: var(--accent); }
+    button {
+      padding: 10px 14px; font: inherit; font-weight: 600; cursor: pointer;
+      color: var(--accent-contrast); background: var(--accent); border: 0; border-radius: 9px;
+    }
+    button:hover { filter: brightness(1.08); }
+    button:disabled { opacity: 0.55; cursor: default; }
+    .error { display: none; color: var(--danger); font-size: 0.85rem; }
+    .error.show { display: block; }
+    .starting { display: none; text-align: center; }
+    .starting.show { display: block; }
+    .spinner {
+      width: 30px; height: 30px; margin: 0 auto 14px; border-radius: 50%;
+      border: 3px solid var(--border); border-top-color: var(--accent); animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .winctl { position: fixed; top: 12px; right: 14px; display: flex; gap: 8px; z-index: 5; }
+    .winctl[hidden] { display: none; }
+    .winctl button { width: 28px; height: 28px; padding: 0; border-radius: 50%; background: var(--hover); color: var(--muted); font-size: 13px; line-height: 1; }
+    .winctl button:hover { filter: none; background: color-mix(in srgb, var(--muted) 30%, transparent); color: var(--text); }
+    .winctl button.close:hover { background: var(--danger); color: #fff; }
+    footer { margin-top: 20px; color: var(--muted); font-size: 0.8rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="dragbar"></div>
+  <div class="winctl" id="winctl" hidden>
+    <button type="button" title="Minimizar" data-a="minimize">&#8211;</button>
+    <button type="button" title="Maximizar" data-a="maximize">&#9633;</button>
+    <button type="button" class="close" title="Cerrar" data-a="close">&#10005;</button>
+  </div>
+  <main id="choose">
+    <h1>Zer0Code</h1>
+    <p class="lead">Claude desarrolla, ChatGPT revisa. Elige dónde viven tus conversaciones.</p>
+
+    <div class="cards">
+      <section class="card">
+        <h2>Conectar con mi servidor</h2>
+        <p>Entra a tu Zer0Code (VPS, Tailscale, casa). Verás las mismas conversaciones que en la web y en el móvil, en tiempo real.</p>
+        <input type="text" id="url" placeholder="https://mi-servidor.tailnet.ts.net" autocomplete="off" spellcheck="false">
+        <div class="error" id="remote-error"></div>
+        <div class="spacer"></div>
+        <button id="btn-remote">Conectar</button>
+      </section>
+
+      <section class="card">
+        <h2>Usar este equipo</h2>
+        <p>La app lleva el servidor dentro: tus chats y tus cuentas (Claude, ChatGPT, Gemini) se quedan aquí, sin montar nada.</p>
+        <label class="check">
+          <input type="checkbox" id="share">
+          <span>Compartir en mi red<small>Para entrar desde el móvil u otro equipo de la misma Wi-Fi y ver estos mismos chats</small></span>
+        </label>
+        <div class="error" id="local-error"></div>
+        <div class="spacer"></div>
+        <button id="btn-local">Usar este equipo</button>
+      </section>
+    </div>
+    <footer id="version"></footer>
+  </main>
+
+  <main id="starting" class="starting">
+    <div class="spinner"></div>
+    <h1>Arrancando Zer0Code…</h1>
+    <p class="lead">Preparando el servidor integrado.</p>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const api = window.Zer0CodeDesktop;
+
+    if (new URLSearchParams(location.search).get('starting') === '1') {
+      $('choose').style.display = 'none';
+      $('starting').classList.add('show');
+    }
+
+    function showError(id, message) {
+      const el = $(id);
+      el.textContent = message || '';
+      el.classList.toggle('show', !!message);
+    }
+
+    async function run(button, errorId, options) {
+      showError('remote-error', '');
+      showError('local-error', '');
+      const label = button.textContent;
+      button.disabled = true;
+      button.textContent = options.mode === 'local' ? 'Arrancando…' : 'Comprobando…';
+      const result = await api.connect(options).catch(err => ({ ok: false, error: err.message }));
+      if (result && result.ok === false) {
+        showError(errorId, result.error);
+        button.disabled = false;
+        button.textContent = label;
+      }
+    }
+
+    $('btn-remote').addEventListener('click', () => run($('btn-remote'), 'remote-error', { mode: 'remote', url: $('url').value }));
+    $('url').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-remote').click(); });
+    $('btn-local').addEventListener('click', () => run($('btn-local'), 'local-error', { mode: 'local', shareLan: $('share').checked }));
+
+    if (api.platform === 'linux') {
+      $('winctl').hidden = false;
+      $('winctl').addEventListener('click', (e) => { const a = e.target.closest('button')?.dataset.a; if (a) api.windowControl(a); });
+    }
+    api.onNotice((message) => showError('remote-error', message));
+    api.getState().then((state) => {
+      if (!state) return;
+      if (state.remoteUrl) $('url').value = state.remoteUrl;
+      $('share').checked = !!state.shareLan;
+      $('version').textContent = `Zer0Code ${state.version} · ${state.platform}`;
+    });
+  </script>
+</body>
+</html>

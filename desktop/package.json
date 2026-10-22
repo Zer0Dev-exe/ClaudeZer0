@@ -1,0 +1,21 @@
+{
+  "name": "zer0code-desktop",
+  "version": "1.3.2",
+  "private": true,
+  "description": "Zer0Code para escritorio: Windows, macOS y Linux",
+  "author": {
+    "name": "Zer0Dev-exe",
+    "email": "igorlizaso16@gmail.com"
+  },
+  "homepage": "https://github.com/Zer0Dev-exe/Zer0Code",
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.15.3"
+  }
+}

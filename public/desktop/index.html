@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zer0Code</title>
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg?v=4">
+  <script>
+    // Tema antes de pintar: sin parpadeo blanco
+    (function () {
+      var t = localStorage.getItem('z0d_theme') || 'dark';
+      if (t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.dataset.theme = t;
+      var d = window.Zer0CodeDesktop;
+      if (d) document.documentElement.classList.add('is-desktop', 'plat-' + d.platform);
+    })();
+  </script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="root"></div>
+  <div id="popovers"></div>
+  <div id="toasts"></div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
