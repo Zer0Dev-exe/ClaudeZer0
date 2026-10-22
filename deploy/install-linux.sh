@@ -53,7 +53,7 @@ say "Creando el servicio $SERVICE"
 SERVICE_PATH="$(dirname "$NODE_BIN"):$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 sudo tee "/etc/systemd/system/$SERVICE.service" >/dev/null <<EOF
 [Unit]
-Description=Zer0Code (Claude Code desde el navegador y el móvil)
+Description=Zer0Code (orquestador de agentes para escritorio, web y móvil)
 After=network-online.target
 Wants=network-online.target
 

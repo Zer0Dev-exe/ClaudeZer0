@@ -1,7 +1,7 @@
 {
   "name": "zer0code",
   "version": "1.4.0",
-  "description": "Panel web y móvil directo para Claude Code",
+  "description": "Orquestador de agentes con app de escritorio, web y móvil",
   "main": "server/index.js",
   "type": "module",
   "scripts": {

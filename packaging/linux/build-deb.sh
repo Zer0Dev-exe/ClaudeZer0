@@ -24,8 +24,8 @@ Architecture: $ARCH
 Maintainer: Zer0Dev-exe <76405774+Zer0Dev-exe@users.noreply.github.com>
 Homepage: https://github.com/Zer0Dev-exe/Zer0Code
 Installed-Size: $(du -sk "$PKG" | cut -f1)
-Description: Claude Code desde el navegador y el móvil
- Interfaz web y app móvil para Claude Code, servida desde tu propio servidor.
+Description: Zer0Code - orquestador de agentes para escritorio, web y móvil
+ Servidor de Zer0Code para conectar la app de escritorio, la web y el móvil.
  Incluye Node.js y Claude Code: no necesita nada más instalado.
 EOF
 

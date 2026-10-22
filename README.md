@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="banner.svg" alt="Zer0Code" width="100%">
+  <img src="banner.svg" alt="Zer0Code: agentes en tu escritorio, navegador y móvil" width="100%">
 </p>
 
 <h3 align="center">Claude desarrolla, ChatGPT revisa. En tu escritorio, tu navegador y tu móvil.</h3>
@@ -31,7 +31,7 @@
 
 ## ¿Por qué Zer0Code?
 
-Claude Code es potente, pero vive en una terminal. Zer0Code lo pone en una web que puedes abrir desde cualquier dispositivo, sin renunciar a nada:
+Zer0Code es un orquestador de agentes con app de escritorio, web y móvil. Combina Claude Code, Codex y Gemini CLI en una misma interfaz y continúa tus conversaciones desde cualquier dispositivo:
 
 - **🧑‍💻 Un equipo de agentes.** Claude desarrolla y ChatGPT (Codex) revisa el código mientras trabaja y al terminar. Si quieres, Claude corrige solo lo que el revisor señale. [Cómo funciona](#orquestador).
 - **🖥️ App de escritorio** para Windows, macOS y Linux, además de la web y la app móvil. Todas enseñan **las mismas conversaciones**, en directo: empieza en el PC, sigue en el móvil.

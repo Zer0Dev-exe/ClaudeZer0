@@ -23,6 +23,6 @@
     <path d="M7.9 2.8l1.7 4.1M14.4 17.1l1.7 4.1M2.8 16.1l4.1-1.7M17.1 9.6l4.1-1.7M16.1 2.8l-1.7 4.1M9.6 17.1l-1.7 4.1M2.8 7.9l4.1 1.7M17.1 14.4l4.1 1.7" stroke-width="1.6"/>
   </g>
 
-  <text x="470" y="186" font-family="Georgia, 'Times New Roman', serif" font-size="92" fill="#faf9f5" letter-spacing="-1">Claude<tspan fill="#d97757">Zer<tspan font-family="'Times New Roman', Times, serif">0</tspan></tspan></text>
-  <text x="474" y="232" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" fill="#faf9f5" fill-opacity="0.62">Claude Code desde el navegador y el móvil</text>
+  <text x="470" y="186" font-family="Georgia, 'Times New Roman', serif" font-size="92" fill="#faf9f5" letter-spacing="-1">Zer0<tspan fill="#d97757">Code</tspan></text>
+  <text x="474" y="232" font-family="'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" fill="#faf9f5" fill-opacity="0.62">Agentes en tu escritorio, navegador y móvil</text>
 </svg>
