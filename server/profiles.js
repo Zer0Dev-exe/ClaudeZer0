@@ -4,7 +4,7 @@ import { DATA_DIR } from './paths.js';
 
 // Perfiles por usuario: saludo de bienvenida e instrucciones extra para el asistente.
 // Viven en data/profiles.json (fuera de git), así cada instalación personaliza a sus usuarios
-// sin tocar el código. Formato: { "usuario": { "greeting": "...", "systemPrompt": "..." } }
+// sin tocar el código. Formato: { "usuario": { "greeting": "...", "systemPrompt": "...", "starters": [{ "label": "...", "prompt": "..." }] } }
 const profilesPath = path.join(DATA_DIR, 'profiles.json');
 
 function getProfile(username) {
@@ -20,8 +20,16 @@ function getProfile(username) {
 
 // Lo que necesita la web (el prompt del sistema nunca sale del servidor)
 export function getPublicProfile(username) {
-  const greeting = getProfile(username)?.greeting;
-  return typeof greeting === 'string' && greeting.trim() ? { greeting: greeting.trim() } : null;
+  const profile = getProfile(username);
+  const greeting = typeof profile?.greeting === 'string' ? profile.greeting.trim() : '';
+  // Atajos de la pantalla de inicio: [{ label, prompt, icon? }]
+  const starters = Array.isArray(profile?.starters)
+    ? profile.starters
+      .filter(item => item && typeof item.label === 'string' && typeof item.prompt === 'string' && item.label.trim() && item.prompt.trim())
+      .map(item => ({ label: item.label.trim(), prompt: item.prompt.trim(), icon: typeof item.icon === 'string' ? item.icon : undefined }))
+      .slice(0, 6)
+    : [];
+  return greeting || starters.length ? { greeting: greeting || undefined, starters } : null;
 }
 
 export function getProfilePrompt(username) {
