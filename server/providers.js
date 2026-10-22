@@ -63,7 +63,7 @@ let codexCatalogAt = 0;
 function refreshCodexCatalog() {
   if (Date.now() - codexCatalogAt < CODEX_REFRESH_MS) return;
   codexCatalogAt = Date.now();
-  execFile(getCodexBinary(), ['debug', 'models'], { timeout: 30000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
+  execFile(getCodexBinary(), ['debug', 'models'], { timeout: 30000, maxBuffer: 8 * 1024 * 1024, shell: process.platform === 'win32' }, (err, stdout) => {
     if (err) return;
     try {
       const parsed = JSON.parse(stdout);
@@ -190,7 +190,7 @@ let agyCatalogAt = 0;
 function refreshAgyCatalog() {
   if (Date.now() - agyCatalogAt < GEMINI_REFRESH_MS) return;
   agyCatalogAt = Date.now();
-  execFile(getAgyBinary(), ['models'], { timeout: 60000, maxBuffer: 1024 * 1024 }, (err, stdout) => {
+  execFile(getAgyBinary(), ['models'], { timeout: 60000, maxBuffer: 1024 * 1024, shell: process.platform === 'win32' }, (err, stdout) => {
     if (err) return;
     const groups = new Map();
     for (const line of stdout.split('\n')) {
