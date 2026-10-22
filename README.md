@@ -19,11 +19,11 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/app-overview.png" alt="Capturas actuales de Zer0Code: app de escritorio y pantalla de inicio móvil con el icono ZØ" width="100%">
+  <img src="docs/screenshots/app-overview-retina.png" alt="Capturas actuales de Zer0Code: app de escritorio y pantalla de inicio móvil con el icono ZØ" width="100%">
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/app-desktop-dark.png" alt="App de escritorio actual: hilos por proyecto, nuevo hilo, selector de modelo y revisor automático" width="100%">
+  <img src="docs/screenshots/app-desktop-dark-retina.png" alt="App de escritorio actual: hilos por proyecto, nuevo hilo, selector de modelo y revisor automático" width="100%">
 </p>
 <p align="center"><sub><b>La app de escritorio:</b> proyectos, hilos, modelos y revisión automática en una misma ventana. Capturas reales de la interfaz actual con hilos de ejemplo; no se han ejecutado tareas para generarlas.</sub></p>
 
