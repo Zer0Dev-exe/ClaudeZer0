@@ -40,6 +40,11 @@ jobs:
       ref: ${{ steps.v.outputs.ref }}
     steps:
       - uses: actions/checkout@v5
+      - name: Verificar iconos de marca
+        run: |
+          cmp public/icon-512.png desktop/build/icon.png
+          cmp public/icon-512.png packaging/icon-512.png
+          cmp desktop/build/icon.ico packaging/windows/zer0code.ico
       - id: v
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
