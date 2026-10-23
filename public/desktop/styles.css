@@ -140,6 +140,8 @@ button:disabled { cursor: default; opacity: 0.5; }
 }
 
 /* ---------------------------------------------------------------- Sidebar */
+/* Solo la marca arrastra: el dibujo de 84px queda fuera de ese árbol y
+   no puede extender la zona nativa sobre los botones de la fila siguiente. */
 .sidebar-head { position: relative; height: 52px; flex-shrink: 0; }
 .sidebar-stage { position: absolute; inset: 0 0 auto 0; height: 84px; pointer-events: none; user-select: none;
   mask-image: linear-gradient(to bottom, black 0%, black 55%, transparent 92%);
@@ -150,7 +152,7 @@ button:disabled { cursor: default; opacity: 0.5; }
     color-mix(in srgb, var(--sidebar) 58%, transparent) 64%, color-mix(in srgb, var(--sidebar) 82%, transparent) 75%,
     color-mix(in srgb, var(--sidebar) 96%, transparent) 85%, var(--sidebar) 93%); }
 .sidebar-stage svg { width: 100%; height: 100%; display: block; }
-.sidebar-brand { position: relative; z-index: 1; display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 10px 0 10px; color: #fff; text-shadow: 0 1px 8px rgb(0 0 0 / 35%); }
+.sidebar-brand { overflow: hidden; position: relative; z-index: 1; display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 10px 0 10px; color: #fff; text-shadow: 0 1px 8px rgb(0 0 0 / 35%); }
 .plat-darwin .sidebar-brand { padding-left: 82px; }
 .sidebar-brand .logo { width: 22px; height: 22px; border-radius: 7px; flex-shrink: 0; box-shadow: 0 0 0 1px rgb(255 255 255 / 25%), 0 4px 14px -2px rgb(0 0 0 / 50%); }
 .sidebar-brand .name { font-weight: 400; font-size: 16px; letter-spacing: -0.01em; opacity: 0.95; }

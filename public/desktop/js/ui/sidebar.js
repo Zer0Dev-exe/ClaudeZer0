@@ -18,9 +18,9 @@ export function mountSidebar(root) {
 
 function head() {
   const stage = h('div', { class: 'sidebar-stage', html: skySvg() });
-  return h('div', { class: 'sidebar-head drag' },
+  return h('div', { class: 'sidebar-head' },
     stage,
-    h('div', { class: 'sidebar-brand' },
+    h('div', { class: 'sidebar-brand drag' },
       h('button', { class: 'icon-btn', type: 'button', title: 'Ocultar barra lateral (Ctrl B)', onclick: () => setUi({ sidebar: false }) }, icon('panel-left')),
       h('img', { class: 'logo', src: '../icon.svg', alt: '' }),
       h('span', { class: 'name' }, h('b', null, 'Zer0'), 'Code')));
